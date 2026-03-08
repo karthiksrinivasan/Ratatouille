@@ -366,3 +366,87 @@ class TestTimerSystem:
 
         ts = TimerSystem(on_timer_due=noop, on_timer_warning=noop_warn)
         ts.cancel_timer("nonexistent")  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# 5.3 — Process Bar State Push
+# ---------------------------------------------------------------------------
+
+
+class _FakeWebSocket:
+    """Mock WebSocket for testing send/receive."""
+
+    def __init__(self, receive_data=None):
+        self.sent: list[dict] = []
+        self._receive_data = receive_data
+
+    async def send_json(self, data: dict):
+        self.sent.append(data)
+
+    async def receive_json(self) -> dict:
+        if self._receive_data is not None:
+            return self._receive_data
+        # Simulate timeout by waiting forever
+        await asyncio.sleep(9999)
+
+
+@pytest.mark.asyncio
+class TestProcessBarStatePush:
+    """Test process bar state building and push."""
+
+    async def test_build_bar_state_empty(self):
+        from app.services.processes import build_process_bar_state
+        bar = await build_process_bar_state([])
+        assert bar["type"] == "process_update"
+        assert bar["active_count"] == 0
+        assert bar["attention_needed"] == []
+        assert bar["next_due"] is None
+
+    async def test_build_bar_state_filters_complete(self):
+        from app.services.processes import build_process_bar_state
+        processes = [
+            {"process_id": "a", "state": "countdown", "priority": "P2", "due_at": "2024-01-01T00:10:00"},
+            {"process_id": "b", "state": "complete", "priority": "P2", "due_at": None},
+        ]
+        bar = await build_process_bar_state(processes)
+        assert bar["active_count"] == 1
+        assert bar["processes"][0]["process_id"] == "a"
+
+    async def test_build_bar_state_attention_needed(self):
+        from app.services.processes import build_process_bar_state
+        processes = [
+            {"process_id": "a", "state": "needs_attention", "priority": "P1"},
+            {"process_id": "b", "state": "in_progress", "priority": "P2"},
+        ]
+        bar = await build_process_bar_state(processes)
+        assert bar["attention_needed"] == ["a"]
+
+    async def test_build_bar_state_next_due(self):
+        from app.services.processes import build_process_bar_state
+        processes = [
+            {"process_id": "a", "state": "countdown", "priority": "P2", "due_at": "2024-01-01T00:15:00"},
+            {"process_id": "b", "state": "countdown", "priority": "P2", "due_at": "2024-01-01T00:10:00"},
+        ]
+        bar = await build_process_bar_state(processes)
+        assert bar["next_due"]["process_id"] == "b"  # earlier due_at
+
+    async def test_build_bar_state_sorted_by_priority(self):
+        from app.services.processes import build_process_bar_state
+        processes = [
+            {"process_id": "a", "state": "in_progress", "priority": "P3"},
+            {"process_id": "b", "state": "needs_attention", "priority": "P0"},
+            {"process_id": "c", "state": "countdown", "priority": "P2", "due_at": "2024-01-01T00:10:00"},
+        ]
+        bar = await build_process_bar_state(processes)
+        assert [p["process_id"] for p in bar["processes"]] == ["b", "c", "a"]
+
+    async def test_push_process_bar(self):
+        from app.services.processes import push_process_bar
+        ws = _FakeWebSocket()
+        processes = [
+            {"process_id": "a", "state": "countdown", "priority": "P2", "due_at": "2024-01-01T00:10:00"},
+        ]
+        await push_process_bar(ws, processes)
+        assert len(ws.sent) == 1
+        assert ws.sent[0]["type"] == "process_update"
+        assert ws.sent[0]["active_count"] == 1
