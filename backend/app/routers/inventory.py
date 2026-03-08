@@ -599,3 +599,88 @@ async def start_session_from_scan(
             "body": {},
         },
     }
+
+
+@router.get("/inventory-scans/{scan_id}/suggestions/{suggestion_id}/explain")
+async def explain_suggestion(
+    scan_id: str,
+    suggestion_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Provide grounded 'Why this recipe?' explanation for a suggestion card."""
+    scan_doc = await db.collection("inventory_scans").document(scan_id).get()
+    if not scan_doc.exists:
+        raise HTTPException(404, "Scan not found")
+    scan = scan_doc.to_dict()
+    if scan["uid"] != user["uid"]:
+        raise HTTPException(403, "Not your scan")
+
+    suggestion_doc = await (
+        db.collection("inventory_scans")
+        .document(scan_id)
+        .collection("suggestions")
+        .document(suggestion_id)
+        .get()
+    )
+    if not suggestion_doc.exists:
+        raise HTTPException(404, "Suggestion not found")
+    suggestion = suggestion_doc.to_dict()
+
+    confidence_map = scan.get("confidence_map", {})
+    matched = suggestion.get("matched_ingredients", [])
+    missing = suggestion.get("missing_ingredients", [])
+    assumptions = suggestion.get("assumptions", [])
+
+    # GE-03: Flag low-confidence detections used in matching
+    low_confidence_matches = [
+        ing for ing in matched if confidence_map.get(ing, 1.0) < 0.5
+    ]
+
+    explanation_parts = []
+
+    # Why this recipe fits
+    if suggestion["source_type"] == "saved_recipe":
+        explanation_parts.append(
+            f"This is from your saved recipes. "
+            f"You have {len(matched)} of the {len(matched) + len(missing)} required ingredients."
+        )
+    else:
+        explanation_parts.append(
+            f"I designed this recipe around what you have available. "
+            f"It uses {len(matched)} of your confirmed ingredients."
+        )
+
+    # What matched
+    if matched:
+        explanation_parts.append(f"Using: {', '.join(matched[:8])}.")
+
+    # What's missing
+    if missing:
+        explanation_parts.append(f"You'd still need: {', '.join(missing)}.")
+    else:
+        explanation_parts.append("You have everything you need!")
+
+    # GE-03: Trust caveat for low-confidence ingredients
+    if low_confidence_matches:
+        names = ", ".join(low_confidence_matches[:3])
+        pronoun = "it" if len(low_confidence_matches) == 1 else "them"
+        explanation_parts.append(
+            f"Note: I wasn't fully certain about {names} from the scan — "
+            f"double-check you actually have {pronoun}."
+        )
+
+    # GE-02: Surface assumptions for buddy recipes
+    if assumptions:
+        explanation_parts.append(f"I assumed: {'; '.join(assumptions)}.")
+
+    return {
+        "suggestion_id": suggestion_id,
+        "title": suggestion["title"],
+        "explanation_full": " ".join(explanation_parts),
+        "grounding_sources": suggestion.get("grounding_sources", []),
+        "matched_ingredients": matched,
+        "missing_ingredients": missing,
+        "assumptions": assumptions,
+        "low_confidence_warnings": low_confidence_matches,
+        "match_score": suggestion["match_score"],
+    }
