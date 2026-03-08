@@ -36,7 +36,8 @@ from app.routers import inventory
 
 app.include_router(inventory.router, prefix="/v1", tags=["inventory"])
 
-from app.routers import sessions, live
+from app.routers import sessions, live, vision
 
 app.include_router(sessions.router, prefix="/v1", tags=["sessions"])
 app.include_router(live.router, prefix="/v1", tags=["live"])
+app.include_router(vision.router, prefix="/v1", tags=["vision"])
