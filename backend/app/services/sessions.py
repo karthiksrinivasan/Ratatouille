@@ -35,3 +35,18 @@ async def create_session_record(
     }
     await db.collection("sessions").document(session_id).set(session_data)
     return session_data
+
+
+async def persist_session_state(session_id: str, updates: dict):
+    """Atomic update of session state fields."""
+    await db.collection("sessions").document(session_id).update(updates)
+
+
+async def log_session_event(session_id: str, event_type: str, payload: dict):
+    """Append event to session events subcollection."""
+    await db.collection("sessions").document(session_id) \
+        .collection("events").add({
+            "type": event_type,
+            "timestamp": firestore.SERVER_TIMESTAMP,
+            "payload": payload,
+        })

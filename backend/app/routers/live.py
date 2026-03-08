@@ -2,9 +2,9 @@
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from firebase_admin import auth as firebase_auth
-from google.cloud import firestore
 
 from app.services.firestore import db
+from app.services.sessions import persist_session_state, log_session_event
 from app.agents.orchestrator import create_session_orchestrator
 
 router = APIRouter()
@@ -107,6 +107,11 @@ async def live_session(websocket: WebSocket, session_id: str):
             elif event_type == "step_complete":
                 response = await orchestrator.advance_step()
                 await websocket.send_json(response)
+                # Persist step change and calibration state
+                await persist_session_state(session_id, {
+                    "current_step": orchestrator.state.get("current_step", 1),
+                    "calibration_state": orchestrator.calibration.to_dict(),
+                })
 
             elif event_type == "vision_check":
                 frame_uri = data.get("frame_uri")
@@ -120,6 +125,10 @@ async def live_session(websocket: WebSocket, session_id: str):
                     "type": "mode_update",
                     "ambient_listen": enabled,
                 })
+                # Persist mode settings change
+                await persist_session_state(session_id, {
+                    "mode_settings.ambient_listen": enabled,
+                })
 
             elif event_type == "resume_interrupted":
                 response = await orchestrator.handle_resume()
@@ -130,17 +139,17 @@ async def live_session(websocket: WebSocket, session_id: str):
                 await websocket.send_json({"type": "pong"})
 
             # Log event to Firestore events subcollection
-            await db.collection("sessions").document(session_id) \
-                .collection("events").add({
-                    "type": event_type,
-                    "timestamp": firestore.SERVER_TIMESTAMP,
-                    "payload": data,
-                    "uid": user["uid"],
-                })
+            await log_session_event(session_id, event_type, {
+                **data,
+                "uid": user["uid"],
+            })
 
     except WebSocketDisconnect:
-        await db.collection("sessions").document(session_id).update({
+        # Persist final state for resume capability
+        await persist_session_state(session_id, {
             "status": "paused",
+            "current_step": orchestrator.state.get("current_step", 1),
+            "calibration_state": orchestrator.calibration.to_dict(),
         })
     except Exception:
         try:
