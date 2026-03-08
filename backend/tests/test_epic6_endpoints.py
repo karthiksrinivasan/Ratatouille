@@ -259,3 +259,72 @@ class TestVisualGuideEndpoint:
 
         assert exc_info.value.status_code == 500
         _guide_generators.clear()
+
+
+# ---------------------------------------------------------------------------
+# Task 6.7 — Taste check endpoint
+# ---------------------------------------------------------------------------
+
+class TestTasteCheckEndpoint:
+    @pytest.mark.asyncio
+    async def test_taste_check_prompted(self):
+        """Empty description returns a taste prompt."""
+        from app.routers.vision import taste_check
+
+        mock_session_doc = _mock_session()
+        mock_recipe_doc = _mock_recipe()
+
+        mock_collection = MagicMock()
+        mock_doc_ref = MagicMock()
+        mock_doc_ref.get = AsyncMock(side_effect=[mock_session_doc, mock_recipe_doc])
+        mock_collection.document.return_value = mock_doc_ref
+
+        with patch("app.routers.vision.db") as mock_db:
+            mock_db.collection.return_value = mock_collection
+
+            result = await taste_check(
+                session_id="s1",
+                description="",
+                user={"uid": "u1"},
+            )
+
+        assert result["type"] == "taste_prompt"
+        assert "dimensions" in result
+        assert "salt" in result["dimensions"]
+        assert len(result["dimensions"]) == 5
+
+    @pytest.mark.asyncio
+    async def test_taste_check_with_description(self):
+        """User description triggers Gemini diagnostic."""
+        from app.routers.vision import taste_check
+
+        mock_session_doc = _mock_session()
+        mock_recipe_doc = _mock_recipe()
+
+        mock_collection = MagicMock()
+        mock_doc_ref = MagicMock()
+        mock_doc_ref.get = AsyncMock(side_effect=[mock_session_doc, mock_recipe_doc])
+        mock_collection.document.return_value = mock_doc_ref
+
+        mock_gemini_response = MagicMock()
+        mock_gemini_response.text = "Try adding a squeeze of lemon for brightness."
+
+        mock_aio = MagicMock()
+        mock_aio.models.generate_content = AsyncMock(return_value=mock_gemini_response)
+
+        with patch("app.routers.vision.db") as mock_db, \
+             patch("app.routers.vision.gemini_client") as mock_client, \
+             patch("app.routers.vision.log_session_event", new_callable=AsyncMock):
+            mock_db.collection.return_value = mock_collection
+            mock_client.aio = mock_aio
+
+            result = await taste_check(
+                session_id="s1",
+                description="it tastes flat",
+                user={"uid": "u1"},
+            )
+
+        assert result["type"] == "taste_result"
+        assert "lemon" in result["message"]
+        assert result["step"] == 1
+        assert result["stage"] in ("early", "mid", "late")

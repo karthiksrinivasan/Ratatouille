@@ -6,10 +6,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.agents.guide_image import GuideImageGenerator
+from app.agents.taste import determine_cooking_stage, get_taste_dimensions
 from app.agents.vision import assess_food_image, format_vision_response
 from app.auth.firebase import get_current_user
 from app.config import settings
 from app.services.firestore import db
+from app.services.gemini import gemini_client, MODEL_FLASH
 from app.services.sessions import log_session_event
 from app.services.storage import get_signed_url, upload_bytes
 
@@ -112,3 +114,57 @@ async def generate_visual_guide(
         )
 
     return response
+
+
+@router.post("/sessions/{session_id}/taste-check")
+async def taste_check(
+    session_id: str,
+    description: str = Form(""),
+    user: dict = Depends(get_current_user),
+):
+    """Taste diagnostic endpoint (PRD §7.8 TR-01 through TR-03)."""
+    session, recipe, current_step = await _load_session_and_step(session_id, user["uid"])
+
+    step_num = session.get("current_step", 1)
+    total_steps = len(recipe.get("steps", []))
+
+    # If no description, return a prompted taste check
+    if not description:
+        return {
+            "type": "taste_prompt",
+            "message": "Good moment to taste! Take a small spoonful and tell me how it is.",
+            "dimensions": [d["name"] for d in get_taste_dimensions()],
+        }
+
+    # User provided feedback — run diagnostic via Gemini
+    stage = determine_cooking_stage(step_num, total_steps)
+
+    response = await gemini_client.aio.models.generate_content(
+        model=MODEL_FLASH,
+        contents=f"""The user is cooking {recipe['title']}, currently on step {step_num}:
+"{current_step.get('instruction', '')}"
+
+Cooking stage: {stage}
+They tasted and said: "{description}"
+
+Provide a taste diagnostic:
+1. What dimension likely needs adjustment?
+2. What specific ingredient and quantity to add?
+3. Any warning about this stage of cooking?
+
+Be specific, warm, and brief.""",
+    )
+
+    result = {
+        "type": "taste_result",
+        "message": response.text,
+        "step": step_num,
+        "stage": stage,
+    }
+
+    await log_session_event(session_id, "taste_check", {
+        "description": description,
+        "response": response.text,
+    })
+
+    return result
