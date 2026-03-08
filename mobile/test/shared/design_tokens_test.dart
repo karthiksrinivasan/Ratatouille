@@ -25,14 +25,14 @@ void main() {
     });
   });
 
-  group('Durations', () {
+  group('AppDurations', () {
     test('fast < normal < slow', () {
-      expect(Durations.fast, lessThan(Durations.normal));
-      expect(Durations.normal, lessThan(Durations.slow));
+      expect(AppDurations.fast, lessThan(AppDurations.normal));
+      expect(AppDurations.normal, lessThan(AppDurations.slow));
     });
 
     test('screen transition target is 250ms', () {
-      expect(Durations.screenTransition.inMilliseconds, equals(250));
+      expect(AppDurations.screenTransition.inMilliseconds, equals(250));
     });
   });
 

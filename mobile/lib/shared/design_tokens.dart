@@ -28,8 +28,8 @@ class Radii {
   static const double pill = 100;
 }
 
-class Durations {
-  Durations._();
+class AppDurations {
+  AppDurations._();
 
   static const Duration fast = Duration(milliseconds: 150);
   static const Duration normal = Duration(milliseconds: 250);
