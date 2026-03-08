@@ -74,9 +74,20 @@ async def live_session(websocket: WebSocket, session_id: str):
         while True:
             data = await websocket.receive_json()
             event_type = data.get("type")
+            text = data.get("text", "")
 
-            if event_type == "voice_query":
-                response = await orchestrator.handle_voice_query(data.get("text", ""))
+            # Classify voice mode (VM-01 through VM-04)
+            voice_mode = orchestrator.classify_input(event_type, text)
+
+            if voice_mode == "VM-04" or event_type == "barge_in":
+                # Barge-in: buddy was speaking, user interrupted
+                response = await orchestrator.handle_barge_in(text)
+                for msg in response:
+                    await websocket.send_json(msg)
+
+            elif event_type == "voice_query":
+                # VM-02: Active query
+                response = await orchestrator.handle_voice_query(text)
                 await websocket.send_json({
                     "type": "buddy_response",
                     "text": response["text"],
@@ -85,6 +96,9 @@ async def live_session(websocket: WebSocket, session_id: str):
                 })
 
             elif event_type == "voice_audio":
+                if voice_mode == "VM-01" and not orchestrator.should_respond_ambient(text):
+                    # Ambient mode: non-cooking speech — ignore
+                    continue
                 audio_data = data.get("audio")
                 response = await orchestrator.handle_audio_chunk(audio_data)
                 if response:
@@ -106,11 +120,6 @@ async def live_session(websocket: WebSocket, session_id: str):
                     "type": "mode_update",
                     "ambient_listen": enabled,
                 })
-
-            elif event_type == "barge_in":
-                response = await orchestrator.handle_barge_in(data.get("text", ""))
-                for msg in response:
-                    await websocket.send_json(msg)
 
             elif event_type == "resume_interrupted":
                 response = await orchestrator.handle_resume()

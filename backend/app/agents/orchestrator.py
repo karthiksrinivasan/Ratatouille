@@ -7,6 +7,7 @@ from google.adk.agents import Agent
 from google.adk.tools import FunctionTool, ToolContext
 
 from app.services.gemini import MODEL_FLASH
+from app.agents.voice_modes import VoiceModeManager
 
 
 def get_current_step(tool_context: ToolContext) -> str:
@@ -49,8 +50,8 @@ class SessionOrchestrator:
     def __init__(self, agent: Agent, session_state: dict):
         self.agent = agent
         self.state = session_state
-        self.last_interrupted_response: Optional[str] = None
-        self.buddy_speaking = False
+        self.voice_mode = VoiceModeManager()
+        self.voice_mode.ambient_enabled = session_state.get("ambient_listen", False)
 
     async def handle_voice_query(self, text: str) -> dict:
         """Handle an active voice query from the user."""
@@ -77,7 +78,7 @@ class SessionOrchestrator:
                     if part.text:
                         response_text += part.text
 
-        self.buddy_speaking = True
+        self.voice_mode.start_speaking(response_text)
         return {
             "text": response_text or "I'm here — what do you need?",
             "current_step": self.state.get("current_step", 1),
@@ -122,20 +123,29 @@ class SessionOrchestrator:
     async def set_ambient_mode(self, enabled: bool):
         """Toggle ambient listening mode."""
         self.state["ambient_listen"] = enabled
+        self.voice_mode.ambient_enabled = enabled
+
+    def classify_input(self, event_type: str, text: str = "") -> str:
+        """Classify input into voice mode (VM-01 through VM-04)."""
+        return self.voice_mode.classify_input(event_type, text)
+
+    def should_respond_ambient(self, transcript: str) -> bool:
+        """Check if ambient input is cooking-relevant and warrants a response."""
+        return self.voice_mode.should_respond_ambient(transcript)
 
     async def handle_barge_in(self, text: str) -> list:
         """Handle barge-in interruption (VM-04)."""
-        self.buddy_speaking = False
+        interrupted_preview = self.voice_mode.interrupt()
         messages = []
 
         # Notify client to stop playback
         messages.append({
             "type": "buddy_interrupted",
-            "interrupted_text": (self.last_interrupted_response or "")[:100],
-            "resumable": self.last_interrupted_response is not None,
+            "interrupted_text": interrupted_preview or "",
+            "resumable": interrupted_preview is not None,
         })
 
-        # Handle new intent
+        # Handle the new user intent
         response = await self.handle_voice_query(text)
         messages.append({
             "type": "buddy_response",
@@ -146,17 +156,21 @@ class SessionOrchestrator:
 
     async def handle_resume(self) -> Optional[dict]:
         """Resume interrupted response with concise summary."""
-        if not self.last_interrupted_response:
+        interrupted = self.voice_mode.consume_interrupted()
+        if not interrupted:
             return {
                 "type": "buddy_response",
                 "text": "Nothing to resume — what do you need?",
                 "step": self.state.get("current_step", 1),
             }
         summary = await self.handle_voice_query(
-            f"Briefly summarize what you were saying: {self.last_interrupted_response}"
+            f"Briefly summarize what you were saying: {interrupted}"
         )
-        self.last_interrupted_response = None
         return summary
+
+    def get_mode_state(self) -> dict:
+        """Return current mode state for client UI."""
+        return self.voice_mode.get_mode_state()
 
 
 ORCHESTRATOR_INSTRUCTION = """You are Ratatouille, a warm and knowledgeable cooking buddy.
