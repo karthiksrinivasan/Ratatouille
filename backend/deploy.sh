@@ -175,11 +175,13 @@ run gcloud run deploy "$SERVICE_NAME" \
   --platform=managed \
   --service-account="$SA_EMAIL" \
   --memory="$MEMORY" \
+  --cpu=1 \
   --timeout="$TIMEOUT" \
   --concurrency="$CONCURRENCY" \
   --min-instances="$MIN_INSTANCES" \
   --max-instances="$MAX_INSTANCES" \
   --allow-unauthenticated \
+  --cpu-boost \
   --set-env-vars="\
 GCP_PROJECT_ID=${PROJECT_ID},\
 GCP_REGION=${REGION},\

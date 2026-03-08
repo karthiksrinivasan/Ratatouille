@@ -124,12 +124,14 @@ class _CookNowScreenState extends State<CookNowScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Call-like visual area
+            // Scrollable content area
             Expanded(
-              child: Center(
+              child: SingleChildScrollView(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
+                    const SizedBox(height: Spacing.xl),
+
                     // Buddy avatar / mic icon
                     Container(
                       width: 120,
@@ -176,58 +178,62 @@ class _CookNowScreenState extends State<CookNowScreen> {
                         ),
                       ),
                     ],
-                  ],
-                ),
-              ),
-            ),
 
-            // Optional context (collapsible — not required)
-            if (_showOptionalContext)
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: Spacing.pagePadding),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _goalController,
-                      decoration: const InputDecoration(
-                        hintText: 'What are you making? (optional)',
-                        prefixIcon: Icon(Icons.restaurant_menu),
-                        border: OutlineInputBorder(),
-                        isDense: true,
+                    const SizedBox(height: Spacing.md),
+
+                    // Toggle optional context
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(
+                            () => _showOptionalContext = !_showOptionalContext);
+                      },
+                      icon: Icon(_showOptionalContext
+                          ? Icons.expand_less
+                          : Icons.expand_more),
+                      label: Text(_showOptionalContext
+                          ? 'Hide options'
+                          : 'Add optional context'),
+                    ),
+
+                    // Optional context (collapsible — not required)
+                    if (_showOptionalContext)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: Spacing.pagePadding),
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: _goalController,
+                              decoration: const InputDecoration(
+                                hintText: 'What are you making? (optional)',
+                                prefixIcon: Icon(Icons.restaurant_menu),
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                            ),
+                            const SizedBox(height: Spacing.sm),
+                            Wrap(
+                              spacing: Spacing.sm,
+                              children: _timeOptions.map((t) {
+                                return ChoiceChip(
+                                  label: Text(t),
+                                  selected: _selectedTime == t,
+                                  onSelected: (v) {
+                                    setState(
+                                        () => _selectedTime = v ? t : null);
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: Spacing.sm),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: Spacing.sm),
-                    Wrap(
-                      spacing: Spacing.sm,
-                      children: _timeOptions.map((t) {
-                        return ChoiceChip(
-                          label: Text(t),
-                          selected: _selectedTime == t,
-                          onSelected: (v) {
-                            setState(
-                                () => _selectedTime = v ? t : null);
-                          },
-                        );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: Spacing.sm),
+
+                    const SizedBox(height: Spacing.md),
                   ],
                 ),
               ),
-
-            // Toggle optional context
-            TextButton.icon(
-              onPressed: () {
-                setState(
-                    () => _showOptionalContext = !_showOptionalContext);
-              },
-              icon: Icon(_showOptionalContext
-                  ? Icons.expand_less
-                  : Icons.expand_more),
-              label: Text(_showOptionalContext
-                  ? 'Hide options'
-                  : 'Add optional context'),
             ),
 
             const SizedBox(height: Spacing.sm),

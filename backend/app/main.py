@@ -71,14 +71,20 @@ async def health():
 
 @app.on_event("startup")
 async def warmup():
-    try:
-        from app.services.gemini import gemini_client, MODEL_FLASH
-        await gemini_client.aio.models.generate_content(
-            model=MODEL_FLASH, contents="Hello"
-        )
-        logger.info("Gemini client warmed up")
-    except Exception as e:
-        logger.warning(f"Warmup call failed (non-critical): {e}")
+    import asyncio
+
+    async def _warmup_gemini():
+        try:
+            from app.services.gemini import gemini_client, MODEL_FLASH
+            await gemini_client.aio.models.generate_content(
+                model=MODEL_FLASH, contents="Hello"
+            )
+            logger.info("Gemini client warmed up")
+        except Exception as e:
+            logger.warning(f"Warmup call failed (non-critical): {e}")
+
+    # Run warmup in background so the server starts accepting requests immediately
+    asyncio.create_task(_warmup_gemini())
 
 
 # Internal metrics endpoint (admin only)

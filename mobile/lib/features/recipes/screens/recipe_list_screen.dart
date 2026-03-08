@@ -32,6 +32,11 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.home_rounded),
+          tooltip: 'Back to Home',
+          onPressed: () => context.go(AppRoutes.home),
+        ),
         title: const Text('Recipes'),
         actions: [
           _SortButton(),
