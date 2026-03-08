@@ -36,6 +36,10 @@ class RecipeCreate(BaseModel):
     steps: list[RecipeStep] = Field(default_factory=list)
 
 
+class RecipeFromURLRequest(BaseModel):
+    url: str
+
+
 class Recipe(RecipeCreate):
     recipe_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     uid: str = ""  # Owner user ID

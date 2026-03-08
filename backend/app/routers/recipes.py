@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from google.cloud import firestore
 
 from app.auth.firebase import get_current_user
-from app.models.recipe import RecipeCreate, Recipe, RecipeStep
+from app.models.recipe import RecipeCreate, Recipe, RecipeStep, RecipeFromURLRequest
 from app.services.firestore import db
 from app.services.gemini import gemini_client, MODEL_FLASH
 
@@ -95,6 +95,54 @@ async def create_recipe(body: RecipeCreate, user: dict = Depends(get_current_use
     # Extract technique tags for steps that don't have them
     body.steps = await extract_technique_tags(body.steps)
     recipe_data = _build_recipe_data(body, recipe_id, user["uid"])
+    await db.collection("recipes").document(recipe_id).set(recipe_data)
+    return recipe_data
+
+
+@router.post("/recipes/from-url", response_model=Recipe)
+async def create_recipe_from_url(
+    body: RecipeFromURLRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Parse a recipe from a URL using Gemini (best effort)."""
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model=MODEL_FLASH,
+            contents=f"""Parse this recipe URL and extract structured data.
+URL: {body.url}
+
+Return JSON with these fields:
+- title: string
+- description: string
+- servings: number or null
+- total_time_minutes: number or null
+- difficulty: "easy" | "medium" | "hard" or null
+- cuisine: string or null
+- ingredients: array of {{"name": string, "quantity": string, "unit": string, "preparation": string}}
+- steps: array of {{"step_number": number, "instruction": string, "duration_minutes": number or null}}
+
+Return ONLY valid JSON.""",
+        )
+
+        parsed = json.loads(response.text)
+        parsed["source_type"] = "url_parsed"
+        parsed["source_url"] = body.url
+
+        # Normalize ingredient names
+        for ing in parsed.get("ingredients", []):
+            if "name_normalized" not in ing:
+                ing["name_normalized"] = ing.get("name", "").lower().strip()
+
+        recipe_create = RecipeCreate(**parsed)
+    except json.JSONDecodeError:
+        raise HTTPException(422, "Could not parse recipe from URL: invalid response from AI")
+    except Exception as e:
+        raise HTTPException(422, f"Could not parse recipe from URL: {str(e)}")
+
+    # Use standard creation flow with tag extraction
+    recipe_id = str(uuid.uuid4())
+    recipe_create.steps = await extract_technique_tags(recipe_create.steps)
+    recipe_data = _build_recipe_data(recipe_create, recipe_id, user["uid"])
     await db.collection("recipes").document(recipe_id).set(recipe_data)
     return recipe_data
 
