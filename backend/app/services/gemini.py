@@ -3,10 +3,10 @@ from google import genai
 from app.config import settings
 
 # Model constants — use these everywhere, never hardcode model strings
-MODEL_FLASH = "gemini-2.5-flash"
-MODEL_LIVE = "gemini-live-2.5-flash-preview-native-audio"
-MODEL_IMAGE_GEN = "gemini-2.0-flash-preview-image-generation"
-MODEL_PRO = "gemini-2.5-pro"  # Only for high-complexity reasoning escalation
+MODEL_FLASH = "gemini-3-flash-preview"
+MODEL_LIVE = "gemini-live-2.5-flash-native-audio"
+MODEL_IMAGE_GEN = "gemini-3-pro-image-preview"
+MODEL_PRO = "gemini-3.1-pro-preview"  # Only for high-complexity reasoning escalation
 
 _gemini_client = None
 
