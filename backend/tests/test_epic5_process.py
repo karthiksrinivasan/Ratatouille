@@ -1,0 +1,250 @@
+"""Tests for Epic 5 — Process Management, Timers & Concurrency."""
+
+import os
+import json
+import pytest
+
+os.environ.setdefault("GCP_PROJECT_ID", "test-project")
+os.environ.setdefault("GCS_BUCKET_NAME", "test-bucket")
+os.environ.setdefault("ENVIRONMENT", "testing")
+
+from app.models.process import Process, ProcessCreate, ProcessBarState
+
+
+# ---------------------------------------------------------------------------
+# 5.1 — Process Models
+# ---------------------------------------------------------------------------
+
+
+class TestProcessModels:
+    """Pydantic model validation for process models."""
+
+    def test_process_create(self):
+        pc = ProcessCreate(name="Boil water", step_number=1, duration_minutes=8.0)
+        assert pc.name == "Boil water"
+        assert pc.step_number == 1
+        assert pc.duration_minutes == 8.0
+        assert pc.is_parallel is False
+
+    def test_process_create_parallel(self):
+        pc = ProcessCreate(name="Slice garlic", step_number=2, is_parallel=True)
+        assert pc.is_parallel is True
+        assert pc.duration_minutes is None
+
+    def test_process_defaults(self):
+        p = Process(session_id="s1", name="Test", step_number=1)
+        assert p.process_id  # auto-generated UUID
+        assert p.priority == "P2"
+        assert p.state == "pending"
+        assert p.started_at is None
+        assert p.due_at is None
+        assert p.buddy_managed is False
+        assert p.is_parallel is False
+
+    def test_process_all_fields(self):
+        from datetime import datetime
+        now = datetime.utcnow()
+        p = Process(
+            process_id="pid-1",
+            session_id="s1",
+            name="Cook pasta",
+            step_number=3,
+            priority="P1",
+            state="countdown",
+            started_at=now,
+            due_at=now,
+            duration_minutes=9.0,
+            buddy_managed=False,
+            is_parallel=True,
+        )
+        assert p.priority == "P1"
+        assert p.state == "countdown"
+        assert p.duration_minutes == 9.0
+
+    def test_process_bar_state(self):
+        p1 = Process(session_id="s1", name="A", step_number=1, state="countdown")
+        p2 = Process(session_id="s1", name="B", step_number=2, state="needs_attention")
+        bar = ProcessBarState(
+            processes=[p1, p2],
+            active_count=2,
+            attention_needed=[p2.process_id],
+            next_due=p1,
+        )
+        assert bar.active_count == 2
+        assert len(bar.attention_needed) == 1
+        assert bar.next_due.name == "A"
+
+    def test_process_bar_state_empty(self):
+        bar = ProcessBarState(
+            processes=[],
+            active_count=0,
+            attention_needed=[],
+        )
+        assert bar.next_due is None
+
+
+# ---------------------------------------------------------------------------
+# 5.1 — Process Manager Agent tool functions
+# ---------------------------------------------------------------------------
+
+
+class _FakeToolContext:
+    """Minimal mock for ToolContext with state dict."""
+
+    def __init__(self, state: dict):
+        self.state = state
+
+
+class TestProcessManagerTools:
+    """Test ADK tool functions for process management."""
+
+    def test_create_process(self):
+        from app.agents.process_manager import create_process
+        ctx = _FakeToolContext({"session_id": "s1", "processes": []})
+        result = json.loads(create_process(
+            name="Boil water",
+            step_number=1,
+            duration_minutes=8.0,
+            priority="P2",
+            is_parallel=False,
+            tool_context=ctx,
+        ))
+        assert result["status"] == "created"
+        assert "process_id" in result
+        assert len(ctx.state["processes"]) == 1
+        assert ctx.state["processes"][0]["name"] == "Boil water"
+
+    def test_start_process_with_duration(self):
+        from app.agents.process_manager import create_process, start_process
+        ctx = _FakeToolContext({"session_id": "s1", "processes": []})
+        created = json.loads(create_process(
+            name="Boil water", step_number=1,
+            duration_minutes=8.0, priority="P2", is_parallel=False,
+            tool_context=ctx,
+        ))
+        pid = created["process_id"]
+
+        result = json.loads(start_process(pid, ctx))
+        assert result["state"] == "countdown"
+        assert result["due_at"] is not None
+
+    def test_start_process_without_duration(self):
+        from app.agents.process_manager import create_process, start_process
+        ctx = _FakeToolContext({"session_id": "s1", "processes": []})
+        created = json.loads(create_process(
+            name="Slice garlic", step_number=2,
+            duration_minutes=0, priority="P2", is_parallel=True,
+            tool_context=ctx,
+        ))
+        pid = created["process_id"]
+
+        result = json.loads(start_process(pid, ctx))
+        assert result["state"] == "in_progress"
+        assert result["due_at"] is None
+
+    def test_start_process_not_found(self):
+        from app.agents.process_manager import start_process
+        ctx = _FakeToolContext({"session_id": "s1", "processes": []})
+        result = json.loads(start_process("nonexistent", ctx))
+        assert "error" in result
+
+    def test_complete_process(self):
+        from app.agents.process_manager import create_process, complete_process
+        ctx = _FakeToolContext({"session_id": "s1", "processes": []})
+        created = json.loads(create_process(
+            name="Test", step_number=1,
+            duration_minutes=1.0, priority="P2", is_parallel=False,
+            tool_context=ctx,
+        ))
+        pid = created["process_id"]
+
+        result = json.loads(complete_process(pid, ctx))
+        assert result["state"] == "complete"
+        assert ctx.state["processes"][0]["state"] == "complete"
+
+    def test_complete_process_not_found(self):
+        from app.agents.process_manager import complete_process
+        ctx = _FakeToolContext({"session_id": "s1", "processes": []})
+        result = json.loads(complete_process("nonexistent", ctx))
+        assert "error" in result
+
+    def test_get_active_processes_sorted(self):
+        from app.agents.process_manager import get_active_processes
+        ctx = _FakeToolContext({
+            "session_id": "s1",
+            "processes": [
+                {"process_id": "a", "priority": "P3", "state": "in_progress", "due_at": None},
+                {"process_id": "b", "priority": "P0", "state": "needs_attention", "due_at": "2024-01-01T00:00:00"},
+                {"process_id": "c", "priority": "P2", "state": "countdown", "due_at": "2024-01-01T00:05:00"},
+                {"process_id": "d", "priority": "P2", "state": "complete", "due_at": None},  # excluded
+                {"process_id": "e", "priority": "P4", "state": "passive", "due_at": None},  # excluded
+            ],
+        })
+        result = json.loads(get_active_processes(ctx))
+        assert len(result) == 3
+        assert result[0]["process_id"] == "b"  # P0 first
+        assert result[1]["process_id"] == "c"  # P2
+        assert result[2]["process_id"] == "a"  # P3
+
+    def test_flag_needs_attention(self):
+        from app.agents.process_manager import flag_needs_attention
+        ctx = _FakeToolContext({
+            "session_id": "s1",
+            "processes": [
+                {"process_id": "a", "state": "countdown"},
+            ],
+        })
+        result = json.loads(flag_needs_attention("a", ctx))
+        assert result["state"] == "needs_attention"
+        assert ctx.state["processes"][0]["state"] == "needs_attention"
+
+    def test_flag_needs_attention_not_found(self):
+        from app.agents.process_manager import flag_needs_attention
+        ctx = _FakeToolContext({"session_id": "s1", "processes": []})
+        result = json.loads(flag_needs_attention("nope", ctx))
+        assert "error" in result
+
+    def test_delegate_to_buddy(self):
+        from app.agents.process_manager import delegate_to_buddy
+        ctx = _FakeToolContext({
+            "session_id": "s1",
+            "processes": [
+                {"process_id": "a", "state": "in_progress", "buddy_managed": False},
+            ],
+        })
+        result = json.loads(delegate_to_buddy("a", ctx))
+        assert result["buddy_managed"] is True
+        assert ctx.state["processes"][0]["state"] == "passive"
+        assert ctx.state["processes"][0]["buddy_managed"] is True
+
+    def test_delegate_to_buddy_not_found(self):
+        from app.agents.process_manager import delegate_to_buddy
+        ctx = _FakeToolContext({"session_id": "s1", "processes": []})
+        result = json.loads(delegate_to_buddy("nope", ctx))
+        assert "error" in result
+
+    def test_multiple_processes_lifecycle(self):
+        """Full lifecycle: create → start → complete multiple processes."""
+        from app.agents.process_manager import (
+            create_process, start_process, complete_process, get_active_processes,
+        )
+        ctx = _FakeToolContext({"session_id": "s1", "processes": []})
+
+        # Create two processes
+        p1 = json.loads(create_process("Boil water", 1, 8.0, "P2", False, ctx))
+        p2 = json.loads(create_process("Slice garlic", 2, 0, "P2", True, ctx))
+        assert len(ctx.state["processes"]) == 2
+
+        # Start both
+        json.loads(start_process(p1["process_id"], ctx))
+        json.loads(start_process(p2["process_id"], ctx))
+
+        # Both active
+        active = json.loads(get_active_processes(ctx))
+        assert len(active) == 2
+
+        # Complete one
+        json.loads(complete_process(p1["process_id"], ctx))
+        active = json.loads(get_active_processes(ctx))
+        assert len(active) == 1
+        assert active[0]["process_id"] == p2["process_id"]
