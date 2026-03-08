@@ -135,3 +135,127 @@ class TestVisionCheckEndpoint:
             mock_db.collection.return_value = mock_collection
             await vision_check("s1", frame=frame, user={"uid": "u1"})
         assert exc_info.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Task 6.5 — Visual guide endpoint
+# ---------------------------------------------------------------------------
+
+class TestVisualGuideEndpoint:
+    @pytest.mark.asyncio
+    async def test_visual_guide_success(self):
+        from app.routers.vision import generate_visual_guide, _guide_generators
+
+        # Clear cache
+        _guide_generators.clear()
+
+        mock_session_doc = _mock_session()
+        mock_recipe_doc = _mock_recipe()
+
+        mock_collection = MagicMock()
+        mock_doc_ref = MagicMock()
+        mock_doc_ref.get = AsyncMock(side_effect=[mock_session_doc, mock_recipe_doc])
+        mock_collection.document.return_value = mock_doc_ref
+
+        guide_result = {
+            "guide_id": "g1",
+            "image_url": "https://signed-url/guide.png",
+            "cue_overlays": ["Edges golden", "Oil sheen"],
+            "stage_label": "light_golden",
+        }
+
+        mock_generator = MagicMock()
+        mock_generator.generate_guide = AsyncMock(return_value=guide_result)
+
+        with patch("app.routers.vision.db") as mock_db, \
+             patch("app.routers.vision.GuideImageGenerator", return_value=mock_generator):
+            mock_db.collection.return_value = mock_collection
+
+            result = await generate_visual_guide(
+                session_id="s1",
+                stage_label="light_golden",
+                source_frame=None,
+                user={"uid": "u1"},
+            )
+
+        assert result["type"] == "guide_image"
+        assert result["guide_id"] == "g1"
+        assert len(result["cue_overlays"]) == 2
+        _guide_generators.clear()
+
+    @pytest.mark.asyncio
+    async def test_visual_guide_with_source_frame(self):
+        from app.routers.vision import generate_visual_guide, _guide_generators
+
+        _guide_generators.clear()
+
+        mock_session_doc = _mock_session()
+        mock_recipe_doc = _mock_recipe()
+
+        mock_collection = MagicMock()
+        mock_doc_ref = MagicMock()
+        mock_doc_ref.get = AsyncMock(side_effect=[mock_session_doc, mock_recipe_doc])
+        mock_collection.document.return_value = mock_doc_ref
+
+        guide_result = {
+            "guide_id": "g2",
+            "image_url": "https://signed-url/guide.png",
+            "cue_overlays": ["Cue 1"],
+            "stage_label": "target",
+        }
+
+        mock_generator = MagicMock()
+        mock_generator.generate_guide = AsyncMock(return_value=guide_result)
+
+        source_frame = MagicMock()
+        source_frame.read = AsyncMock(return_value=b"source-frame-bytes")
+
+        with patch("app.routers.vision.db") as mock_db, \
+             patch("app.routers.vision.GuideImageGenerator", return_value=mock_generator), \
+             patch("app.routers.vision.upload_bytes", return_value="gs://test-bucket/source.jpg"), \
+             patch("app.routers.vision.get_signed_url", return_value="https://signed-url/source.jpg"):
+            mock_db.collection.return_value = mock_collection
+
+            result = await generate_visual_guide(
+                session_id="s1",
+                stage_label="target",
+                source_frame=source_frame,
+                user={"uid": "u1"},
+            )
+
+        assert result["type"] == "guide_image"
+        assert "source_frame_url" in result
+        _guide_generators.clear()
+
+    @pytest.mark.asyncio
+    async def test_visual_guide_error_returns_500(self):
+        from app.routers.vision import generate_visual_guide, _guide_generators
+        from fastapi import HTTPException
+
+        _guide_generators.clear()
+
+        mock_session_doc = _mock_session()
+        mock_recipe_doc = _mock_recipe()
+
+        mock_collection = MagicMock()
+        mock_doc_ref = MagicMock()
+        mock_doc_ref.get = AsyncMock(side_effect=[mock_session_doc, mock_recipe_doc])
+        mock_collection.document.return_value = mock_doc_ref
+
+        mock_generator = MagicMock()
+        mock_generator.generate_guide = AsyncMock(return_value={"error": "No image generated"})
+
+        with patch("app.routers.vision.db") as mock_db, \
+             patch("app.routers.vision.GuideImageGenerator", return_value=mock_generator), \
+             pytest.raises(HTTPException) as exc_info:
+            mock_db.collection.return_value = mock_collection
+
+            await generate_visual_guide(
+                session_id="s1",
+                stage_label="target",
+                source_frame=None,
+                user={"uid": "u1"},
+            )
+
+        assert exc_info.value.status_code == 500
+        _guide_generators.clear()
