@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from app.agents.guide_image import GuideImageGenerator
+from app.agents.recovery import build_recovery_prompt
 from app.agents.taste import determine_cooking_stage, get_taste_dimensions
 from app.agents.vision import assess_food_image, format_vision_response
 from app.auth.firebase import get_current_user
@@ -165,6 +166,46 @@ Be specific, warm, and brief.""",
     await log_session_event(session_id, "taste_check", {
         "description": description,
         "response": response.text,
+    })
+
+    return result
+
+
+@router.post("/sessions/{session_id}/recover")
+async def recover(
+    session_id: str,
+    error_description: str = Form(...),
+    user: dict = Depends(get_current_user),
+):
+    """Error recovery endpoint following 4-step sequence (PRD §7.8 TR-04)."""
+    session, recipe, current_step = await _load_session_and_step(session_id, user["uid"])
+
+    step_num = session.get("current_step", 1)
+    prompt = build_recovery_prompt(
+        recipe["title"],
+        step_num,
+        current_step.get("instruction", ""),
+        error_description,
+    )
+
+    response = await gemini_client.aio.models.generate_content(
+        model=MODEL_FLASH,
+        contents=prompt,
+    )
+
+    techniques = current_step.get("technique_tags", [])
+
+    result = {
+        "type": "recovery",
+        "message": response.text,
+        "step": step_num,
+        "techniques_affected": techniques,
+    }
+
+    await log_session_event(session_id, "error_recovery", {
+        "error": error_description,
+        "recovery": response.text,
+        "step": step_num,
     })
 
     return result
