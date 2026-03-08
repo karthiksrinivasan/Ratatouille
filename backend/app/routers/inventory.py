@@ -9,6 +9,7 @@ from google.cloud import firestore
 from google.genai import types
 
 from app.auth.firebase import get_current_user
+from app.models.inventory import IngredientConfirmation
 from app.services.firestore import db
 from app.services.gemini import MODEL_FLASH, gemini_client
 from app.services.ingredients import normalize_ingredient
@@ -180,4 +181,36 @@ async def detect_ingredients(
         "detected_ingredients": detected,
         "status": "detected",
         "low_confidence_count": sum(1 for d in detected if d["confidence"] < 0.5),
+    }
+
+
+@router.post("/inventory-scans/{scan_id}/confirm-ingredients")
+async def confirm_ingredients(
+    scan_id: str,
+    body: IngredientConfirmation,
+    user: dict = Depends(get_current_user),
+):
+    """User reviews detected ingredients, adds/removes items, confirms final list."""
+    doc = await db.collection("inventory_scans").document(scan_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Scan not found")
+    scan = doc.to_dict()
+    if scan["uid"] != user["uid"]:
+        raise HTTPException(403, "Not your scan")
+    if scan["status"] not in ("detected", "confirmed"):
+        raise HTTPException(400, "Scan must be in 'detected' state first")
+
+    confirmed = [normalize_ingredient(i) for i in body.confirmed_ingredients]
+
+    await db.collection("inventory_scans").document(scan_id).update(
+        {
+            "confirmed_ingredients": confirmed,
+            "status": "confirmed",
+        }
+    )
+
+    return {
+        "scan_id": scan_id,
+        "confirmed_ingredients": confirmed,
+        "status": "confirmed",
     }
