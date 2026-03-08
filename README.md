@@ -50,7 +50,6 @@ Three entry points converge on the live cooking session:
 - **Vision checks** — point your camera at the food for doneness assessment
 - **AI-generated visual guides** — see what your dish *should* look like at each stage
 - **Process management** — track multiple parallel tasks with priority-based timers
-- **Taste diagnostics** — "Something's missing" triggers a guided 5-dimension assessment
 - **Error recovery** — immediate action, honest assessment, concrete path forward
 
 ### Seasoned Chef Buddy (Freestyle Mode)
