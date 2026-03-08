@@ -24,6 +24,15 @@ class FakeWsClient extends ChangeNotifier implements WsClient {
   String? get lastError => null;
 
   @override
+  int get lastKnownStep => 0;
+
+  @override
+  bool get bargeInActive => false;
+
+  @override
+  Map<String, Map<String, dynamic>> get lastProcessStates => {};
+
+  @override
   Future<void> connect(String sessionId) async {}
 
   @override

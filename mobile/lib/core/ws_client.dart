@@ -32,6 +32,15 @@ class WsClient extends ChangeNotifier {
   static const Duration _heartbeatInterval = Duration(seconds: 15);
   static const Duration _pongTimeout = Duration(seconds: 10);
 
+  /// Last known step for session resume after reconnect.
+  int _lastKnownStep = 0;
+
+  /// Last known process states for session resume.
+  final Map<String, Map<String, dynamic>> _lastProcessStates = {};
+
+  /// Whether a barge-in is active (used by UI to halt playback).
+  bool _bargeInActive = false;
+
   /// Controller that broadcasts incoming messages to listeners.
   final StreamController<Map<String, dynamic>> _messageController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -49,6 +58,10 @@ class WsClient extends ChangeNotifier {
   WsConnectionState get state => _state;
   bool get isConnected => _state == WsConnectionState.connected;
   String? get lastError => _lastError;
+  int get lastKnownStep => _lastKnownStep;
+  bool get bargeInActive => _bargeInActive;
+  Map<String, Map<String, dynamic>> get lastProcessStates =>
+      Map.unmodifiable(_lastProcessStates);
 
   /// Stream of decoded JSON messages from the server.
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
@@ -78,12 +91,18 @@ class WsClient extends ChangeNotifier {
       // Wait for the connection to be ready.
       await _channel!.ready;
 
+      final isReconnect = _currentSessionId == sessionId && _reconnectAttempts > 0;
       _currentSessionId = sessionId;
       _reconnectAttempts = 0;
       _setState(WsConnectionState.connected);
 
       // Send auth first-message fallback (in case query param auth fails).
       _channel!.sink.add(jsonEncode({'type': 'auth', 'token': token}));
+
+      // On reconnect, request session state resume.
+      if (isReconnect) {
+        sendSessionResume();
+      }
 
       // Start heartbeat.
       _startHeartbeat();
@@ -107,6 +126,9 @@ class WsClient extends ChangeNotifier {
     _reconnectTimer = null;
     _currentSessionId = null;
     _processedEventIds.clear();
+    _lastKnownStep = 0;
+    _lastProcessStates.clear();
+    _bargeInActive = false;
     await _subscription?.cancel();
     _subscription = null;
     await _channel?.sink.close();
@@ -234,9 +256,36 @@ class WsClient extends ChangeNotifier {
         }
       }
 
+      // Track step and process state for resume.
+      _trackState(type, decoded);
+
       _messageController.add(decoded);
     } catch (e) {
       debugPrint('WsClient: failed to decode message: $e');
+    }
+  }
+
+  /// Track session state from incoming events for resume capability.
+  void _trackState(String? type, Map<String, dynamic> data) {
+    switch (type) {
+      case 'process_update':
+        final processId = data['process_id'] as String?;
+        if (processId != null) {
+          _lastProcessStates[processId] = data;
+        }
+        break;
+      case 'buddy_message':
+      case 'buddy_response':
+        final step = data['step'] as int?;
+        if (step != null && step > _lastKnownStep) {
+          _lastKnownStep = step;
+        }
+        _bargeInActive = false;
+        break;
+      case 'buddy_interrupted':
+        _bargeInActive = true;
+        notifyListeners();
+        break;
     }
   }
 
