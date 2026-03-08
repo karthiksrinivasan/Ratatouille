@@ -7,6 +7,7 @@
 - PRD type: Hackathon MVP + implementation plan
 - Date: March 8, 2026
 - Inputs used: `product.md`, `GOOGLE_CLOUD_TECH_GUIDE.md`
+- Challenge aligned: `Gemini Live Agent Challenge` (Devpost overview + rules reviewed on March 8, 2026)
 
 ---
 
@@ -76,6 +77,45 @@ Ratatouille solves this by combining voice + vision + timing context into a live
 - Advanced long-term personalization (Session 20+ depth).
 - Full production-grade safety/compliance certification.
 
+### 4.3 Official Challenge Constraints (Must-Pass Gates)
+
+- Submission deadline: `March 16, 2026 at 5:00 PM PDT`.
+- Judging period (overview page): `March 17, 2026 to April 3, 2026`.
+- Winners announced (overview page): `April 14, 2026`.
+- Category for this PRD: `Live Agents`.
+- Must build a `new` project during the contest period (not an extension of old work).
+- Must use:
+  - A Gemini model
+  - Google GenAI SDK or ADK
+  - At least one Google Cloud service
+- Must submit:
+  - Public code repo + spin-up instructions
+  - Proof of Google Cloud deployment (separate short recording or code evidence)
+  - Architecture diagram
+  - Demo video under 4 minutes showing real working software (no mockups)
+- Rules page states:
+  - One submission can win at most one prize
+  - Multiple submissions are allowed only if each is unique and substantially different
+
+### 4.4 Prize Strategy and Win Plan
+
+- Prize pool snapshot from challenge page:
+  - Grand Prize: `$25,000`
+  - Best of Live Agents: `$10,000`
+  - Best of Creative Storytellers: `$10,000`
+  - Best of UI Navigators: `$10,000`
+  - Best Multimodal Integration & User Experience: `$5,000`
+  - Best Technical Execution & Agent Architecture: `$5,000`
+  - Best Innovation & Thought Leadership: `$5,000`
+  - Honorable Mentions: `5 x $2,000`
+- Primary strategy for Ratatouille (this PRD):
+  - Optimize to win `Best of Live Agents`
+  - Simultaneously optimize score for Grand Prize
+  - Maximize eligibility for subcategory wins (Multimodal UX, Technical Execution, Innovation)
+- Multiple-category win strategy:
+  - Since one submission can win one prize, winning multiple categories requires multiple distinct submissions
+  - If team capacity allows, create an additional, clearly distinct submission in `Creative Storytellers` or `UI Navigators`
+
 ---
 
 ## 5. Users and Core Jobs-to-be-Done
@@ -112,6 +152,15 @@ Ratatouille solves this by combining voice + vision + timing context into a live
   - Taste adjustment mini-flow
   - Error recovery sequence
   - Post-session 1-3 interaction wind-down
+  - Live-agent quality requirements:
+    - Natural interruption handling (barge-in)
+    - Distinct and consistent buddy persona
+    - Fluid see/hear/speak interaction without mode confusion
+- Submission package assets
+  - 4-minute (or less) demo narrative video
+  - Architecture diagram focused on agent orchestration and multimodal flow
+  - Cloud deployment proof artifact
+  - Public repository with reproducible setup steps
 
 ### 6.2 Out of Scope
 
@@ -209,6 +258,10 @@ Ratatouille solves this by combining voice + vision + timing context into a live
   - Capture frame/video snippet
   - Return confidence-based response
   - If confidence low, provide sensory fallback
+- `VM-04 Barge-in and interruption handling`
+  - User can interrupt buddy speech at any point
+  - Buddy stops current response and handles latest user intent first
+  - Interrupted responses are resumable in concise form on request (`"continue"`, `"repeat quickly"`)
 
 ## 7.5 Vision Confidence Hierarchy
 
@@ -273,6 +326,17 @@ Ratatouille solves this by combining voice + vision + timing context into a live
 - `FP-07` Selecting a suggestion transitions directly to session setup.
 - `FP-08` If scan confidence is low, system falls back to manual ingredient entry.
 
+## 7.11 Grounding and Explainability
+
+- `GE-01` Every recipe suggestion must cite grounding sources:
+  - Detected/confirmed ingredient list
+  - Saved recipe match features (if from saved lane)
+- `GE-02` Buddy-generated recipes must expose assumptions:
+  - What ingredients are required vs optional
+  - Which ingredients are missing
+- `GE-03` Safety and trust phrasing must avoid false certainty when confidence is medium/low.
+- `GE-04` In demo mode, include an "Why this suggestion?" expandable explanation for each suggested recipe card.
+
 ---
 
 ## 8. Non-Functional Requirements
@@ -298,6 +362,14 @@ Ratatouille solves this by combining voice + vision + timing context into a live
 - `NFR-06 Scan Quality and Trust`
   - Always expose ingredient confidence and allow manual correction
   - Never auto-start cooking from unconfirmed ingredient detections
+- `NFR-07 Judging-Ready Demo Behavior`
+  - Demo must include at least one barge-in interruption and successful recovery
+  - Demo must include at least one grounded suggestion explanation (`Why this recipe?`)
+  - Demo must run end-to-end on deployed cloud services (not local-only)
+- `NFR-08 Submission Compliance`
+  - Demo video duration must stay under 4 minutes
+  - Repo must include complete setup and run instructions
+  - Architecture diagram must match implemented system (no speculative boxes)
 
 ---
 
@@ -467,6 +539,8 @@ Ratatouille solves this by combining voice + vision + timing context into a live
 10. At least one vision-check response with confidence-based behavior.
 11. At least one generated guide image shown for doneness/consistency comparison.
 12. Post-session difficulty emoji + memory confirmation prompt.
+13. At least one user interruption (`barge-in`) during buddy speech is handled naturally.
+14. Recipe suggestion cards include `Why this recipe?` explanation linked to confirmed ingredients.
 
 ---
 
@@ -507,6 +581,36 @@ Ratatouille solves this by combining voice + vision + timing context into a live
 5. At least one generated visual guide output demonstrated in-session.
 6. Privacy constraints visible in UX (ambient indicator + explicit mode consent).
 
+## 14.4 Judging Criteria Alignment (Weighted Scorecard)
+
+- `Innovation & Multimodal User Experience (40%)`
+  - Evidence target:
+    - Fridge/pantry vision input + voice interaction + generated visual guidance output in one continuous flow
+    - Live, fluid interaction with no hard mode breaks
+    - Distinct buddy persona with consistent tone
+    - Natural interruption handling (`barge-in`)
+  - Pass threshold for internal review:
+    - Demo reviewers score >= 8/10 on "this feels live and natural"
+- `Technical Implementation & Agent Architecture (30%)`
+  - Evidence target:
+    - Clear Cloud Run + Firestore + Vertex AI architecture with grounded data flow
+    - Robust fallback behavior under low vision confidence and network jitter
+    - Grounded recommendation explanations and confidence-aware responses
+    - Deployed and reproducible environment from public repo instructions
+  - Pass threshold for internal review:
+    - End-to-end test suite green for critical flows
+- `Demo & Presentation (30%)`
+  - Evidence target:
+    - Demo under 4 minutes with tight story arc:
+      - Scan ingredients
+      - Choose recipe
+      - Live cook with interruption + guide image
+      - Recovery moment + completion
+    - Architecture diagram and cloud proof artifact included in submission
+    - Clear explanation of what is novel and why it matters
+  - Pass threshold for internal review:
+    - Demo dry-run completes in <= 3:45 with no dead air
+
 ---
 
 ## 15. Security, Privacy, and Trust
@@ -539,6 +643,7 @@ Ratatouille solves this by combining voice + vision + timing context into a live
 7. Implement Vision Check endpoint with confidence hierarchy.
 8. Implement visual-guide image generation endpoint and GCS persistence.
 9. Implement taste diagnostic and error recovery routes.
+10. Implement barge-in interruption handling and `Why this recipe?` grounded explanations.
 
 ## 16.3 Day 2 / Polish + Demo (14-18h)
 
@@ -547,6 +652,20 @@ Ratatouille solves this by combining voice + vision + timing context into a live
 3. Harden fallback paths (voice-only degradation).
 4. Finalize scripted demo with one primary recipe.
 5. Deploy stable build via Cloud Build to Cloud Run.
+6. Record final demo video (<4 minutes) and separate cloud-proof artifact.
+7. Produce architecture diagram and align labels with implementation.
+8. Finalize public repo README with exact setup/run steps.
+
+## 16.4 Submission and Bonus Point Workstream
+
+1. Submit optional developer contributions for up to +1.0 score boost:
+   - Public technical blog post (+0.6)
+   - CI/CD with tests and deployment checks (+0.2)
+   - Google Developer Program or local Google community membership (+0.2)
+2. Prepare two alternate demo cuts:
+   - Live Agents-first cut
+   - Innovation/Multimodal-first cut
+3. Run final compliance checklist before Devpost submission.
 
 ---
 
@@ -555,7 +674,7 @@ Ratatouille solves this by combining voice + vision + timing context into a live
 - Engineer A (Mobile): session UX, voice/vision triggers, process bar UI
 - Engineer B (Backend): Cloud Run APIs, Firestore schema, inventory scan + suggestion logic
 - Engineer C (AI): prompts, model routing, ingredient extraction, confidence/fallback behavior
-- Engineer D (Infra): auth, IAM, CI/CD, observability, demo reliability
+- Engineer D (Infra): auth, IAM, CI/CD, observability, demo reliability, submission artifacts
 
 ---
 
@@ -573,6 +692,10 @@ Ratatouille solves this by combining voice + vision + timing context into a live
    - Mitigation: lock feature set to Pillar 3 core loop and single high-quality scenario
 6. Privacy concerns with ambient mode
    - Mitigation: explicit opt-in, visible indicator, no ambient persistence
+7. Submission disqualification due missing required assets
+   - Mitigation: enforce checklist for cloud proof, architecture diagram, public repo instructions, and sub-4-minute video
+8. Misalignment with challenge category criteria
+   - Mitigation: run internal rubric scoring against Live Agents and overall judging weights before final submission
 
 ---
 
@@ -583,6 +706,9 @@ Ratatouille solves this by combining voice + vision + timing context into a live
 3. Confirm push-notification fallback behavior for deferred wind-down.
 4. Confirm suggestion ranking formula (ingredient match vs time vs skill fit).
 5. Confirm one canonical demo recipe with known visual checkpoints.
+6. Decide submission strategy:
+   - Single submission focused on Live Agents + Grand Prize potential, or
+   - Additional distinct submission(s) for Creative Storytellers/UI Navigators categories
 
 ---
 
@@ -592,3 +718,36 @@ Ratatouille solves this by combining voice + vision + timing context into a live
 2. Expand personalization depth beyond Session 7.
 3. Add BigQuery analytics dashboards and A/B testing hooks.
 4. Start Phase 2 planning for grocery extension after core loop validation.
+
+---
+
+## 21. Devpost Submission Checklist (Competition Critical)
+
+1. Category selected correctly: `Live Agents`.
+2. Demo video uploaded and runtime verified below 4:00.
+3. Demo shows:
+   - Fridge/pantry scan
+   - Saved + buddy-generated recipe suggestions
+   - Live multimodal cooking interaction
+   - Barge-in interruption handling
+   - Generated visual guide image
+4. Public repository link works and README has reproducible setup/deploy instructions.
+5. Architecture diagram attached and consistent with implementation.
+6. Google Cloud deployment proof included (separate short clip or equivalent evidence).
+7. Project description clearly states novelty and evaluation-criteria alignment.
+
+## 22. Multi-Category Winning Strategy (If Team Capacity Allows)
+
+1. Submission A: `Ratatouille Live Companion` (this PRD)
+   - Category: `Live Agents`
+   - Primary targets: Grand Prize + Best of Live Agents
+2. Submission B: `Ratatouille Story Kitchen` (distinct project)
+   - Category: `Creative Storytellers`
+   - Focus: narrative-led cooking adventures and character-style coaching
+3. Submission C: `Ratatouille UI Mission Control` (distinct project)
+   - Category: `UI Navigators`
+   - Focus: multimodal interface orchestration and real-time task navigation
+4. Distinctness requirements across submissions:
+   - Different user journeys and core interaction goals
+   - Separate repos and demo videos
+   - Independent architecture choices beyond superficial theming differences
