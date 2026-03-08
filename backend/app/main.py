@@ -29,5 +29,8 @@ app.include_router(recipes.router, prefix="/v1", tags=["recipes"])
 from app.routers import inventory
 
 app.include_router(inventory.router, prefix="/v1", tags=["inventory"])
-# from app.routers import sessions, live
-# app.include_router(sessions.router, prefix="/v1", tags=["sessions"])
+
+from app.routers import sessions, live
+
+app.include_router(sessions.router, prefix="/v1", tags=["sessions"])
+app.include_router(live.router, prefix="/v1", tags=["live"])
