@@ -79,6 +79,14 @@ async def activate_session(
         recipe_doc = await db.collection("recipes").document(session["recipe_id"]).get()
         recipe = recipe_doc.to_dict() if recipe_doc.exists else None
 
+    # Freestyle activation: generate initial plan
+    initial_plan = None
+    session_mode = session.get("session_mode", "recipe_guided")
+    if session_mode == "freestyle":
+        initial_plan = await _generate_freestyle_plan(
+            session.get("freestyle_context", {})
+        )
+
     # Activate session and set first step
     await db.collection("sessions").document(session_id).update({
         "status": "active",
@@ -86,14 +94,69 @@ async def activate_session(
         "current_step": 1,
     })
 
-    return {
+    response = {
         "session_id": session_id,
         "status": "active",
-        "session_mode": session.get("session_mode", "recipe_guided"),
+        "session_mode": session_mode,
         "recipe": recipe,
         "message": "Session activated. Connect to WebSocket for live interaction.",
         "ws_url": f"/v1/live/{session_id}",
     }
+    if initial_plan:
+        response["initial_plan"] = initial_plan
+    return response
+
+
+async def _generate_freestyle_plan(freestyle_context: dict) -> dict:
+    """Generate a short initial plan (2-4 steps) for freestyle sessions."""
+    dish_goal = freestyle_context.get("dish_goal", "")
+    ingredients = freestyle_context.get("available_ingredients", [])
+    time_budget = freestyle_context.get("time_budget_minutes")
+    equipment = freestyle_context.get("equipment", [])
+
+    context_parts = []
+    if dish_goal:
+        context_parts.append(f"Goal: {dish_goal}")
+    if ingredients:
+        context_parts.append(f"Available ingredients: {', '.join(ingredients)}")
+    if time_budget:
+        context_parts.append(f"Time budget: {time_budget} minutes")
+    if equipment:
+        context_parts.append(f"Equipment: {', '.join(equipment)}")
+
+    context_str = "\n".join(context_parts) if context_parts else "No specific context provided."
+
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model=MODEL_FLASH,
+            contents=f"""You are a cooking buddy. Generate a short initial cooking plan (2-4 concrete steps).
+Keep each step to one sentence. Be actionable and practical.
+
+User context:
+{context_str}
+
+Respond as JSON: {{"steps": ["step1", "step2", ...], "first_instruction": "what to do right now"}}""",
+        )
+        import json
+        text = response.text.strip()
+        # Handle markdown code blocks
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        plan = json.loads(text)
+        return {
+            "steps": plan.get("steps", ["Let's start cooking!"]),
+            "first_instruction": plan.get("first_instruction", "Tell me what you'd like to make!"),
+        }
+    except Exception:
+        # Fallback plan when Gemini is unavailable
+        return {
+            "steps": [
+                "Tell me what you'd like to cook or what ingredients you have",
+                "I'll help you prep and get started",
+                "We'll cook together step by step",
+            ],
+            "first_instruction": "Hey! What are we cooking today?",
+        }
 
 
 # --- Epic 7: Post-Session ---

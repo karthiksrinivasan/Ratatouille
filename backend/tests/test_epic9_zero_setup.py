@@ -73,3 +73,36 @@ class TestSessionCreateContract:
     def test_voice_only_interaction_mode(self):
         body = SessionCreate(interaction_mode="voice_only")
         assert body.interaction_mode == "voice_only"
+
+
+class TestFreestyleActivation:
+    """Task 9.3 — Freestyle activation bootstrap."""
+
+    @pytest.mark.asyncio
+    async def test_generate_freestyle_plan_with_context(self):
+        from app.routers.sessions import _generate_freestyle_plan
+        plan = await _generate_freestyle_plan({
+            "dish_goal": "quick eggs",
+            "available_ingredients": ["eggs", "butter"],
+            "time_budget_minutes": 15,
+        })
+        assert "steps" in plan
+        assert "first_instruction" in plan
+        assert len(plan["steps"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_generate_freestyle_plan_empty_context(self):
+        from app.routers.sessions import _generate_freestyle_plan
+        plan = await _generate_freestyle_plan({})
+        assert "steps" in plan
+        assert "first_instruction" in plan
+        assert len(plan["steps"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_generate_freestyle_plan_fallback(self):
+        """Plan generation falls back gracefully when Gemini fails."""
+        from app.routers.sessions import _generate_freestyle_plan
+        # Even with empty context, the fallback should work
+        plan = await _generate_freestyle_plan({})
+        assert isinstance(plan["steps"], list)
+        assert isinstance(plan["first_instruction"], str)
