@@ -246,6 +246,18 @@ async def live_session(websocket: WebSocket, session_id: str):
                 if response:
                     await websocket.send_json(response)
 
+            elif event_type == "session_resume":
+                # Client reconnected — send current session state
+                await websocket.send_json({
+                    "type": "session_state",
+                    "current_step": orchestrator.state.get("current_step", 1),
+                    "ambient_listen": orchestrator.state.get("ambient_listen", False),
+                    "last_message": f"Welcome back! You're on step {orchestrator.state.get('current_step', 1)}.",
+                })
+                # Re-push process bar
+                if processes:
+                    await push_process_bar(websocket, processes)
+
             elif event_type == "ping":
                 await websocket.send_json({"type": "pong"})
 

@@ -52,6 +52,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   String? _conflictMessage;
   int _conflictTimeout = 30;
 
+  // Keep-alive ping timer
+  Timer? _pingTimer;
+
   @override
   void initState() {
     super.initState();
@@ -59,10 +62,21 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     _ws.addListener(_onConnectionStateChanged);
     _messageSub = _ws.messages.listen(_onMessage);
     _ws.connect(widget.sessionId);
+    _startPingTimer();
+  }
+
+  void _startPingTimer() {
+    _pingTimer?.cancel();
+    _pingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+      if (_ws.isConnected) {
+        _ws.sendPing();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _pingTimer?.cancel();
     _messageSub?.cancel();
     _ws.removeListener(_onConnectionStateChanged);
     if (widget.wsClient == null) {
@@ -80,6 +94,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
       } else if (_ws.state == WsConnectionState.connected) {
         if (_buddyState == BuddyState.reconnecting) {
           _buddyState = BuddyState.listening;
+          // Request latest session state after reconnect
+          _ws.sendSessionResume();
         }
       }
     });
@@ -122,6 +138,16 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         case 'conflict_resolved':
           _conflictOptions = null;
           _conflictMessage = null;
+          break;
+
+        // Session state restored after reconnect
+        case 'session_state':
+          _currentStep = msg['current_step'] as int? ?? _currentStep;
+          _ambientEnabled = msg['ambient_listen'] as bool? ?? _ambientEnabled;
+          final text = msg['last_message'] as String?;
+          if (text != null && text.isNotEmpty) {
+            _lastBuddyMessage = text;
+          }
           break;
 
         case 'pong':
@@ -234,6 +260,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           children: [
             // Connection / speaking state banner
             _StateBanner(state: _buddyState),
+
+            // Ambient privacy banner — always visible when enabled
+            if (_ambientEnabled)
+              const _AmbientPrivacyBanner(),
 
             // Sticky process bar (Epic 5)
             ProcessBar(
@@ -373,6 +403,36 @@ class _StateBanner extends StatelessWidget {
             style: TextStyle(
               color: color,
               fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Prominent privacy banner shown when ambient listening is active.
+class _AmbientPrivacyBanner extends StatelessWidget {
+  const _AmbientPrivacyBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+      color: Colors.green.withValues(alpha: 0.12),
+      child: const Row(
+        children: [
+          Icon(Icons.hearing, size: 16, color: Colors.green),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Ambient listening ON — audio is not stored',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.green,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],

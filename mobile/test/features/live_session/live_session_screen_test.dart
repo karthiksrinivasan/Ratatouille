@@ -70,6 +70,9 @@ class FakeWsClient extends ChangeNotifier implements WsClient {
   @override
   void sendPing() => send({'type': 'ping'});
 
+  @override
+  void sendSessionResume() => send({'type': 'session_resume'});
+
   /// Simulate receiving a message from the server.
   void simulateMessage(Map<String, dynamic> msg) {
     _fakeController.add(msg);
@@ -223,8 +226,10 @@ void main() {
       });
       await tester.pump();
 
-      // Ambient is now enabled — should show hearing icon
-      expect(find.byIcon(Icons.hearing), findsOneWidget);
+      // Ambient is now enabled — hearing icon in app bar + privacy banner
+      expect(find.byIcon(Icons.hearing), findsAtLeast(1));
+      // Privacy banner text confirms ambient is on
+      expect(find.text('Ambient listening ON — audio is not stored'), findsOneWidget);
     });
 
     testWidgets('error message updates display', (tester) async {
@@ -237,6 +242,39 @@ void main() {
       await tester.pump();
 
       expect(find.text('Connection lost.'), findsOneWidget);
+    });
+
+    testWidgets('ambient privacy banner shown when ambient enabled', (tester) async {
+      await tester.pumpWidget(buildApp());
+
+      // Banner not visible initially
+      expect(find.text('Ambient listening ON — audio is not stored'), findsNothing);
+
+      // Enable ambient via mode_update
+      fakeWs.simulateMessage({
+        'type': 'mode_update',
+        'ambient_listen': true,
+      });
+      await tester.pump();
+
+      // Banner should now be visible
+      expect(find.text('Ambient listening ON — audio is not stored'), findsOneWidget);
+    });
+
+    testWidgets('session_state restores state after reconnect', (tester) async {
+      await tester.pumpWidget(buildApp());
+
+      fakeWs.simulateMessage({
+        'type': 'session_state',
+        'current_step': 5,
+        'ambient_listen': true,
+        'last_message': 'Welcome back! You were on step 5.',
+      });
+      await tester.pump();
+
+      expect(find.text('Step 5'), findsOneWidget);
+      expect(find.text('Welcome back! You were on step 5.'), findsOneWidget);
+      expect(find.text('Ambient listening ON — audio is not stored'), findsOneWidget);
     });
   });
 }

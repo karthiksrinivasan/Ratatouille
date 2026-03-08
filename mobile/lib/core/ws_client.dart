@@ -168,6 +168,11 @@ class WsClient extends ChangeNotifier {
     send({'type': 'ping'});
   }
 
+  /// Request session state after reconnect so client can resume.
+  void sendSessionResume() {
+    send({'type': 'session_resume'});
+  }
+
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------
