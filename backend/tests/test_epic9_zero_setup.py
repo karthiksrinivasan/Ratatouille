@@ -291,3 +291,51 @@ class TestProcessTimerFreestyle:
         orch = await create_session_orchestrator(session, None)
         # No processes by default in freestyle
         assert orch.state.get("processes") is None or orch.state.get("processes") == []
+
+
+class TestSafetyConstraints:
+    """Task 9.8 — Safety and confidence constraints."""
+
+    def test_check_safety_triggers_hot_oil(self):
+        from app.agents.safety import check_safety_triggers
+        warnings = check_safety_triggers("I'm heating up some hot oil")
+        assert len(warnings) >= 1
+        assert any(w["trigger"] == "hot oil" for w in warnings)
+
+    def test_check_safety_triggers_raw_chicken(self):
+        from app.agents.safety import check_safety_triggers
+        warnings = check_safety_triggers("I have raw chicken on the counter")
+        assert len(warnings) >= 1
+        assert any("165" in w["warning"] for w in warnings)
+
+    def test_check_safety_triggers_no_match(self):
+        from app.agents.safety import check_safety_triggers
+        warnings = check_safety_triggers("Let me chop some onions")
+        assert len(warnings) == 0
+
+    def test_assess_confidence_high(self):
+        from app.agents.safety import assess_confidence
+        ctx = {
+            "dish_goal": "scrambled eggs",
+            "available_ingredients": ["eggs", "butter", "salt"],
+            "time_budget_minutes": 10,
+        }
+        assert assess_confidence(ctx) == "high"
+
+    def test_assess_confidence_low(self):
+        from app.agents.safety import assess_confidence
+        assert assess_confidence({}) == "low"
+
+    def test_assess_confidence_medium(self):
+        from app.agents.safety import assess_confidence
+        ctx = {"dish_goal": "something tasty"}
+        assert assess_confidence(ctx) == "medium"
+
+    def test_safety_instruction_addendum_exists(self):
+        from app.agents.safety import SAFETY_INSTRUCTION_ADDENDUM
+        assert "irreversible-risk" in SAFETY_INSTRUCTION_ADDENDUM
+        assert "food safety" in SAFETY_INSTRUCTION_ADDENDUM.lower() or "safe internal" in SAFETY_INSTRUCTION_ADDENDUM.lower()
+
+    def test_freestyle_instruction_includes_safety(self):
+        from app.agents.orchestrator import FREESTYLE_INSTRUCTION
+        assert "Safety Constraints" in FREESTYLE_INSTRUCTION

@@ -10,6 +10,7 @@ from app.services.gemini import MODEL_FLASH
 from app.agents.voice_modes import VoiceModeManager
 from app.agents.calibration import CalibrationEngine
 from app.agents.degradation import DegradationManager
+from app.agents.safety import SAFETY_INSTRUCTION_ADDENDUM, check_safety_triggers, assess_confidence
 
 
 def get_current_step(tool_context: ToolContext) -> str:
@@ -363,7 +364,7 @@ User context:
 - Ingredients: {available_ingredients}
 - Time budget: {time_budget}
 - Equipment: {equipment}
-"""
+""" + SAFETY_INSTRUCTION_ADDENDUM
 
 
 async def create_session_orchestrator(session: dict, recipe: Optional[dict] = None) -> SessionOrchestrator:
