@@ -51,3 +51,54 @@ async def with_fallback(coro_func, fallback_value, error_msg="Operation failed")
     except Exception as e:
         logger.warning(f"{error_msg}: {e}")
         return fallback_value
+
+
+async def safe_firestore_write(coro_func, fallback_msg="Firestore write failed"):
+    """Wrap a Firestore write; log and swallow errors so the session continues.
+
+    Args:
+        coro_func: Async callable performing the Firestore write.
+        fallback_msg: Message logged on failure.
+
+    Returns:
+        Result of coro_func on success, None on failure.
+    """
+    try:
+        return await coro_func()
+    except Exception as e:
+        logger.error(f"{fallback_msg}: {e}")
+        return None
+
+
+async def safe_gcs_upload(coro_func, fallback_msg="GCS upload failed"):
+    """Wrap a GCS operation; log and swallow errors.
+
+    Args:
+        coro_func: Async callable performing the GCS operation.
+        fallback_msg: Message logged on failure.
+
+    Returns:
+        Result of coro_func on success, None on failure.
+    """
+    try:
+        return await coro_func()
+    except Exception as e:
+        logger.error(f"{fallback_msg}: {e}")
+        return None
+
+
+async def safe_gemini_call(coro_func, fallback_text="I'm having trouble analyzing right now. Please try again in a moment."):
+    """Wrap a Gemini API call; return fallback text on failure.
+
+    Args:
+        coro_func: Async callable performing the Gemini call.
+        fallback_text: Text to return if the call fails.
+
+    Returns:
+        Result of coro_func on success, fallback_text on failure.
+    """
+    try:
+        return await coro_func()
+    except Exception as e:
+        logger.error(f"Gemini call failed: {e}")
+        return fallback_text

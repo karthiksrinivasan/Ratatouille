@@ -13,6 +13,7 @@ from app.auth.firebase import get_current_user
 from app.config import settings
 from app.services.firestore import db
 from app.services.gemini import gemini_client, MODEL_FLASH
+from app.services.resilience import safe_gemini_call, safe_firestore_write, with_fallback
 from app.services.sessions import log_session_event
 from app.services.storage import get_signed_url, upload_bytes
 
@@ -55,15 +56,31 @@ async def vision_check(
     path = f"session-uploads/{user['uid']}/{session_id}/{timestamp}.jpg"
     frame_uri = upload_bytes(path, content, "image/jpeg")
 
-    # Assess
-    assessment = await assess_food_image(frame_uri, current_step, recipe["title"])
+    # Assess — wrap with fallback to sensory text on Gemini failure
+    sensory_fallback = {
+        "confidence": "low",
+        "assessment": (
+            "I can't see clearly right now. Use your senses: listen for a steady sizzle, "
+            "smell for nuttiness not burning, and test texture with a utensil."
+        ),
+        "suggestions": ["Rely on aroma and sound cues", "Check texture with a spoon"],
+        "degraded": True,
+    }
+    assessment = await with_fallback(
+        lambda: assess_food_image(frame_uri, current_step, recipe["title"]),
+        fallback_value=sensory_fallback,
+        error_msg="Vision assessment failed, using sensory fallback",
+    )
     response = format_vision_response(assessment)
 
-    # Log event
-    await log_session_event(session_id, "vision_check", {
-        "frame_uri": frame_uri,
-        "assessment": assessment,
-    })
+    # Log event — wrapped so log failure doesn't break the response
+    await safe_firestore_write(
+        lambda: log_session_event(session_id, "vision_check", {
+            "frame_uri": frame_uri,
+            "assessment": assessment,
+        }),
+        fallback_msg="Failed to log vision_check event",
+    )
 
     return response
 
@@ -98,8 +115,20 @@ async def generate_visual_guide(
             path = f"session-uploads/{user['uid']}/{session_id}/guide_source_{step_num}.jpg"
             source_uri = upload_bytes(path, content, "image/jpeg")
 
-    # Generate guide
-    result = await generator.generate_guide(current_step, stage_label, source_uri)
+    # Generate guide — wrap with text-only fallback
+    text_only_fallback = {
+        "description": (
+            f"Visual guide unavailable. For step {step_num}: "
+            f"{current_step.get('instruction', 'Follow the recipe instructions.')} "
+            "Use your senses to gauge doneness."
+        ),
+        "degraded": True,
+    }
+    result = await with_fallback(
+        lambda: generator.generate_guide(current_step, stage_label, source_uri),
+        fallback_value=text_only_fallback,
+        error_msg="Guide generation failed, using text-only fallback",
+    )
 
     if "error" in result:
         raise HTTPException(500, result["error"])
@@ -140,9 +169,13 @@ async def taste_check(
     # User provided feedback — run diagnostic via Gemini
     stage = determine_cooking_stage(step_num, total_steps)
 
-    response = await gemini_client.aio.models.generate_content(
-        model=MODEL_FLASH,
-        contents=f"""The user is cooking {recipe['title']}, currently on step {step_num}:
+    taste_fallback_text = (
+        "I'm having trouble analyzing the taste right now. General advice: "
+        "taste again in a minute, adjust salt in small pinches, and add acid "
+        "(lemon/vinegar) if the dish tastes flat."
+    )
+
+    taste_prompt = f"""The user is cooking {recipe['title']}, currently on step {step_num}:
 "{current_step.get('instruction', '')}"
 
 Cooking stage: {stage}
@@ -153,20 +186,40 @@ Provide a taste diagnostic:
 2. What specific ingredient and quantity to add?
 3. Any warning about this stage of cooking?
 
-Be specific, warm, and brief.""",
+Be specific, warm, and brief."""
+
+    gemini_result = await safe_gemini_call(
+        lambda: gemini_client.aio.models.generate_content(
+            model=MODEL_FLASH,
+            contents=taste_prompt,
+        ),
+        fallback_text=taste_fallback_text,
     )
+
+    # safe_gemini_call returns the response object on success, or the fallback string on failure
+    if isinstance(gemini_result, str):
+        message_text = gemini_result
+        degraded = True
+    else:
+        message_text = gemini_result.text
+        degraded = False
 
     result = {
         "type": "taste_result",
-        "message": response.text,
+        "message": message_text,
         "step": step_num,
         "stage": stage,
     }
+    if degraded:
+        result["degraded"] = True
 
-    await log_session_event(session_id, "taste_check", {
-        "description": description,
-        "response": response.text,
-    })
+    await safe_firestore_write(
+        lambda: log_session_event(session_id, "taste_check", {
+            "description": description,
+            "response": message_text,
+        }),
+        fallback_msg="Failed to log taste_check event",
+    )
 
     return result
 
@@ -188,24 +241,45 @@ async def recover(
         error_description,
     )
 
-    response = await gemini_client.aio.models.generate_content(
-        model=MODEL_FLASH,
-        contents=prompt,
+    recovery_fallback_text = (
+        "I'm having trouble generating recovery advice right now. "
+        "General tips: lower the heat, taste and adjust seasoning, "
+        "and continue carefully with the next step."
     )
+
+    gemini_result = await safe_gemini_call(
+        lambda: gemini_client.aio.models.generate_content(
+            model=MODEL_FLASH,
+            contents=prompt,
+        ),
+        fallback_text=recovery_fallback_text,
+    )
+
+    if isinstance(gemini_result, str):
+        message_text = gemini_result
+        degraded = True
+    else:
+        message_text = gemini_result.text
+        degraded = False
 
     techniques = current_step.get("technique_tags", [])
 
     result = {
         "type": "recovery",
-        "message": response.text,
+        "message": message_text,
         "step": step_num,
         "techniques_affected": techniques,
     }
+    if degraded:
+        result["degraded"] = True
 
-    await log_session_event(session_id, "error_recovery", {
-        "error": error_description,
-        "recovery": response.text,
-        "step": step_num,
-    })
+    await safe_firestore_write(
+        lambda: log_session_event(session_id, "error_recovery", {
+            "error": error_description,
+            "recovery": message_text,
+            "step": step_num,
+        }),
+        fallback_msg="Failed to log error_recovery event",
+    )
 
     return result
