@@ -450,3 +450,69 @@ class TestProcessBarStatePush:
         assert len(ws.sent) == 1
         assert ws.sent[0]["type"] == "process_update"
         assert ws.sent[0]["active_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# 5.4 — P1 Conflict Resolution
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestP1ConflictResolution:
+    """Test P1 conflict resolution with user choice and timeout."""
+
+    async def test_user_chooses_process(self):
+        from app.services.processes import handle_p1_conflict
+        pa = {"process_id": "a", "name": "Garlic", "state": "needs_attention", "priority": "P1"}
+        pb = {"process_id": "b", "name": "Pasta", "state": "needs_attention", "priority": "P1"}
+
+        ws = _FakeWebSocket(receive_data={"chosen_process_id": "b"})
+        chosen = await handle_p1_conflict(ws, pa, pb, timeout_seconds=5)
+
+        assert chosen == "b"
+        assert len(ws.sent) == 1
+        assert ws.sent[0]["type"] == "priority_conflict"
+        assert len(ws.sent[0]["options"]) == 2
+
+    async def test_timeout_picks_more_critical(self):
+        from app.services.processes import handle_p1_conflict
+        pa = {"process_id": "a", "name": "Garlic", "state": "needs_attention", "priority": "P0"}
+        pb = {"process_id": "b", "name": "Pasta", "state": "needs_attention", "priority": "P1"}
+
+        ws = _FakeWebSocket()  # no receive_data → timeout
+        chosen = await handle_p1_conflict(ws, pa, pb, timeout_seconds=0.1)
+
+        assert chosen == "a"  # P0 is more critical
+
+    async def test_timeout_equal_priority_picks_first(self):
+        from app.services.processes import handle_p1_conflict
+        pa = {"process_id": "a", "name": "Garlic", "priority": "P1"}
+        pb = {"process_id": "b", "name": "Pasta", "priority": "P1"}
+
+        ws = _FakeWebSocket()
+        chosen = await handle_p1_conflict(ws, pa, pb, timeout_seconds=0.1)
+        assert chosen == "a"  # first process wins on tie
+
+    async def test_invalid_choice_falls_to_triage(self):
+        from app.services.processes import handle_p1_conflict
+        pa = {"process_id": "a", "name": "Garlic", "priority": "P0"}
+        pb = {"process_id": "b", "name": "Pasta", "priority": "P2"}
+
+        ws = _FakeWebSocket(receive_data={"chosen_process_id": "invalid"})
+        chosen = await handle_p1_conflict(ws, pa, pb, timeout_seconds=1)
+        assert chosen == "a"  # triage picks P0
+
+    async def test_conflict_message_structure(self):
+        from app.services.processes import handle_p1_conflict
+        pa = {"process_id": "a", "name": "Garlic", "state": "needs_attention", "priority": "P1"}
+        pb = {"process_id": "b", "name": "Pasta", "state": "countdown", "priority": "P1"}
+
+        ws = _FakeWebSocket(receive_data={"chosen_process_id": "a"})
+        await handle_p1_conflict(ws, pa, pb, timeout_seconds=1)
+
+        msg = ws.sent[0]
+        assert msg["priority"] == "P1"
+        assert msg["message"]  # non-empty
+        assert msg["timeout_seconds"] == 1
+        assert msg["options"][0]["process_id"] == "a"
+        assert msg["options"][1]["process_id"] == "b"
