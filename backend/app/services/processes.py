@@ -1,8 +1,10 @@
 """Process management service — bar state push, conflict resolution, delegation (Epic 5)."""
 
 import asyncio
-import json
+import uuid
 from typing import Optional, Protocol
+
+from app.services.firestore import db
 
 
 class WebSocketLike(Protocol):
@@ -178,3 +180,63 @@ def escalate_passive_process(processes: list[dict], process_id: str) -> bool:
             p["buddy_managed"] = False
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# 5.5 — Recipe Process Initialization
+# ---------------------------------------------------------------------------
+
+async def initialize_processes_from_recipe(
+    session_id: str,
+    recipe: dict,
+) -> list[dict]:
+    """Create process entries for recipe steps that need timing or parallel tracking.
+
+    Persists each process to Firestore subcollection sessions/{session_id}/processes/.
+    Returns list of process dicts.
+    """
+    processes = []
+    for step in recipe.get("steps", []):
+        if step.get("duration_minutes") or step.get("is_parallel"):
+            instruction = step.get("instruction", "")
+            truncated = instruction[:50] + ("..." if len(instruction) > 50 else "")
+            process = {
+                "process_id": str(uuid.uuid4()),
+                "session_id": session_id,
+                "name": f"Step {step['step_number']}: {truncated}",
+                "step_number": step["step_number"],
+                "priority": "P2",
+                "state": "pending",
+                "started_at": None,
+                "due_at": None,
+                "duration_minutes": step.get("duration_minutes"),
+                "buddy_managed": False,
+                "is_parallel": step.get("is_parallel", False),
+            }
+            processes.append(process)
+
+            # Persist to Firestore
+            await db.collection("sessions").document(session_id) \
+                .collection("processes").document(process["process_id"]).set(process)
+
+    return processes
+
+
+# ---------------------------------------------------------------------------
+# 5.7 — Process State Persistence
+# ---------------------------------------------------------------------------
+
+async def persist_process_state(session_id: str, process_id: str, updates: dict):
+    """Persist a process state change to Firestore."""
+    await db.collection("sessions").document(session_id) \
+        .collection("processes").document(process_id).update(updates)
+
+
+async def load_processes(session_id: str) -> list[dict]:
+    """Load all processes for a session from Firestore (for session resume)."""
+    docs = db.collection("sessions").document(session_id) \
+        .collection("processes").stream()
+    processes = []
+    async for doc in docs:
+        processes.append(doc.to_dict())
+    return processes

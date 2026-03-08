@@ -516,3 +516,111 @@ class TestP1ConflictResolution:
         assert msg["timeout_seconds"] == 1
         assert msg["options"][0]["process_id"] == "a"
         assert msg["options"][1]["process_id"] == "b"
+
+
+# ---------------------------------------------------------------------------
+# 5.5 — Recipe Process Initialization
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestRecipeProcessInitialization:
+    """Test process creation from recipe steps."""
+
+    async def test_creates_processes_for_timed_steps(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_doc = MagicMock()
+        mock_doc.set = AsyncMock()
+        mock_collection = MagicMock()
+        mock_collection.document.return_value = mock_doc
+        mock_session_doc = MagicMock()
+        mock_session_doc.collection.return_value = mock_collection
+
+        with patch("app.services.processes.db") as mock_db:
+            mock_db.collection.return_value.document.return_value = mock_session_doc
+
+            from app.services.processes import initialize_processes_from_recipe
+            recipe = {
+                "steps": [
+                    {"step_number": 1, "instruction": "Boil water", "duration_minutes": 8.0},
+                    {"step_number": 2, "instruction": "Slice garlic"},  # no duration, no parallel
+                    {"step_number": 3, "instruction": "Cook pasta al dente until just right", "duration_minutes": 9.0},
+                    {"step_number": 4, "instruction": "Saute garlic", "is_parallel": True},
+                ],
+            }
+            processes = await initialize_processes_from_recipe("s1", recipe)
+
+        assert len(processes) == 3  # steps 1, 3, 4 (step 2 excluded)
+        assert processes[0]["step_number"] == 1
+        assert processes[0]["duration_minutes"] == 8.0
+        assert processes[1]["step_number"] == 3
+        assert processes[2]["step_number"] == 4
+        assert processes[2]["is_parallel"] is True
+
+    async def test_process_names_truncated(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_doc = MagicMock()
+        mock_doc.set = AsyncMock()
+        mock_collection = MagicMock()
+        mock_collection.document.return_value = mock_doc
+        mock_session_doc = MagicMock()
+        mock_session_doc.collection.return_value = mock_collection
+
+        with patch("app.services.processes.db") as mock_db:
+            mock_db.collection.return_value.document.return_value = mock_session_doc
+
+            from app.services.processes import initialize_processes_from_recipe
+            recipe = {
+                "steps": [
+                    {
+                        "step_number": 1,
+                        "instruction": "A" * 100,  # long instruction
+                        "duration_minutes": 5.0,
+                    },
+                ],
+            }
+            processes = await initialize_processes_from_recipe("s1", recipe)
+
+        assert len(processes) == 1
+        assert "Step 1:" in processes[0]["name"]
+        assert len(processes[0]["name"]) < 70  # truncated
+
+    async def test_empty_recipe_no_processes(self):
+        from unittest.mock import patch, MagicMock
+
+        with patch("app.services.processes.db") as mock_db:
+            from app.services.processes import initialize_processes_from_recipe
+            processes = await initialize_processes_from_recipe("s1", {"steps": []})
+
+        assert processes == []
+
+    async def test_all_processes_start_as_pending(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_doc = MagicMock()
+        mock_doc.set = AsyncMock()
+        mock_collection = MagicMock()
+        mock_collection.document.return_value = mock_doc
+        mock_session_doc = MagicMock()
+        mock_session_doc.collection.return_value = mock_collection
+
+        with patch("app.services.processes.db") as mock_db:
+            mock_db.collection.return_value.document.return_value = mock_session_doc
+
+            from app.services.processes import initialize_processes_from_recipe
+            recipe = {
+                "steps": [
+                    {"step_number": 1, "instruction": "Boil water", "duration_minutes": 8.0},
+                    {"step_number": 2, "instruction": "Cook pasta", "duration_minutes": 9.0},
+                ],
+            }
+            processes = await initialize_processes_from_recipe("s1", recipe)
+
+        for p in processes:
+            assert p["state"] == "pending"
+            assert p["priority"] == "P2"
+            assert p["buddy_managed"] is False
+            assert p["session_id"] == "s1"
+            assert p["process_id"]  # non-empty UUID
