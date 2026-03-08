@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../../../app/router.dart';
 import '../../../core/ws_client.dart';
 import '../../../core/auth_service.dart';
+import '../widgets/process_bar.dart';
+import '../widgets/conflict_chooser.dart';
 
 /// Speaking/connection state for the live session UI.
 enum BuddyState { listening, speaking, interrupted, reconnecting }
@@ -14,6 +16,7 @@ enum BuddyState { listening, speaking, interrupted, reconnecting }
 ///
 /// Connects to the backend via WebSocket for step-by-step cooking
 /// instructions, voice interaction, and hands-busy ergonomics.
+/// Includes sticky process bar (Epic 5) and P1 conflict chooser.
 class LiveSessionScreen extends StatefulWidget {
   final String sessionId;
   final WsClient? wsClient; // injectable for testing
@@ -38,6 +41,16 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   String _lastBuddyMessage = '';
   String? _interruptedPreview;
   bool _hasInterruptedContent = false;
+
+  // Epic 5 — process tracking state
+  List<CookingProcess> _processes = [];
+  List<String> _attentionNeeded = [];
+  CookingProcess? _nextDue;
+
+  // P1 conflict state
+  List<ConflictOption>? _conflictOptions;
+  String? _conflictMessage;
+  int _conflictTimeout = 30;
 
   @override
   void initState() {
@@ -92,6 +105,25 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         case 'mode_update':
           _ambientEnabled = msg['ambient_listen'] as bool? ?? _ambientEnabled;
           break;
+
+        // --- Epic 5: Process events ---
+        case 'process_update':
+          _updateProcessBar(msg);
+          break;
+        case 'timer_alert':
+          _handleTimerAlert(msg);
+          break;
+        case 'timer_warning':
+          _handleTimerWarning(msg);
+          break;
+        case 'priority_conflict':
+          _handlePriorityConflict(msg);
+          break;
+        case 'conflict_resolved':
+          _conflictOptions = null;
+          _conflictMessage = null;
+          break;
+
         case 'pong':
           break;
         case 'error':
@@ -110,6 +142,67 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         }
       });
     }
+  }
+
+  void _updateProcessBar(Map<String, dynamic> msg) {
+    final processList = msg['processes'] as List<dynamic>? ?? [];
+    _processes = processList
+        .map((p) => CookingProcess.fromJson(p as Map<String, dynamic>))
+        .toList();
+    _attentionNeeded = (msg['attention_needed'] as List<dynamic>?)
+            ?.cast<String>() ??
+        [];
+    final nextDueData = msg['next_due'] as Map<String, dynamic>?;
+    _nextDue = nextDueData != null ? CookingProcess.fromJson(nextDueData) : null;
+  }
+
+  void _handleTimerAlert(Map<String, dynamic> msg) {
+    final processName = msg['process_name'] as String? ?? 'Timer';
+    _lastBuddyMessage = msg['message'] as String? ?? '$processName is done!';
+  }
+
+  void _handleTimerWarning(Map<String, dynamic> msg) {
+    // Show as a snackbar — non-blocking
+    final processName = msg['process_name'] as String? ?? 'Timer';
+    final remaining = msg['remaining_seconds'] as int? ?? 60;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$processName — ${remaining}s left'),
+          duration: const Duration(seconds: 3),
+          backgroundColor: Colors.orange.shade700,
+        ),
+      );
+    });
+  }
+
+  void _handlePriorityConflict(Map<String, dynamic> msg) {
+    final options = (msg['options'] as List<dynamic>?)
+        ?.map((o) => ConflictOption.fromJson(o as Map<String, dynamic>))
+        .toList();
+    _conflictOptions = options;
+    _conflictMessage =
+        msg['message'] as String? ?? 'Two things need your attention!';
+    _conflictTimeout = msg['timeout_seconds'] as int? ?? 30;
+  }
+
+  void _onConflictChoice(String processId) {
+    _ws.send({'type': 'conflict_choice', 'chosen_process_id': processId});
+    setState(() {
+      _conflictOptions = null;
+      _conflictMessage = null;
+    });
+  }
+
+  void _onProcessTap(String processId) {
+    // Mark process as complete
+    _ws.send({'type': 'process_complete', 'process_id': processId});
+  }
+
+  void _onDelegateTap(String processId) {
+    // Delegate process to buddy
+    _ws.send({'type': 'process_delegate', 'process_id': processId});
   }
 
   @override
@@ -141,6 +234,31 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           children: [
             // Connection / speaking state banner
             _StateBanner(state: _buddyState),
+
+            // Sticky process bar (Epic 5)
+            ProcessBar(
+              processes: _processes,
+              attentionNeeded: _attentionNeeded,
+              nextDue: _nextDue,
+              onProcessTap: _onProcessTap,
+              onDelegateTap: _onDelegateTap,
+            ),
+
+            // P1 conflict chooser (overlays content when active)
+            if (_conflictOptions != null && _conflictOptions!.isNotEmpty)
+              ConflictChooser(
+                options: _conflictOptions!,
+                message: _conflictMessage ?? 'Choose which to handle first',
+                timeoutSeconds: _conflictTimeout,
+                onChoice: _onConflictChoice,
+                onTimeout: () {
+                  // Let backend handle timeout triage
+                  setState(() {
+                    _conflictOptions = null;
+                    _conflictMessage = null;
+                  });
+                },
+              ),
 
             // Buddy message area
             Expanded(

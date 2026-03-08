@@ -148,6 +148,21 @@ class WsClient extends ChangeNotifier {
     send({'type': 'vision_check', 'frame_uri': frameUri});
   }
 
+  /// Send process complete event (Epic 5).
+  void sendProcessComplete(String processId) {
+    send({'type': 'process_complete', 'process_id': processId});
+  }
+
+  /// Send process delegate event (Epic 5).
+  void sendProcessDelegate(String processId) {
+    send({'type': 'process_delegate', 'process_id': processId});
+  }
+
+  /// Send conflict choice event (Epic 5).
+  void sendConflictChoice(String processId) {
+    send({'type': 'conflict_choice', 'chosen_process_id': processId});
+  }
+
   /// Send a ping to keep the connection alive.
   void sendPing() {
     send({'type': 'ping'});
