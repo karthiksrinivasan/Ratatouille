@@ -341,6 +341,58 @@ class TestSafetyConstraints:
         assert "Safety Constraints" in FREESTYLE_INSTRUCTION
 
 
+class TestDemoCoverage:
+    """Task 9.10 — Demo script includes zero-setup segment."""
+
+    def test_act0_exists_with_zero_setup_title(self):
+        from app.demo_script import DEMO_ACTS
+        act0 = DEMO_ACTS[0]
+        assert act0["act"] == 0
+        assert "Zero-Setup" in act0["title"]
+
+    def test_act0_demonstrates_no_recipe_dependency(self):
+        from app.demo_script import DEMO_ACTS
+        act0 = DEMO_ACTS[0]
+        beats_text = " ".join(act0["beats"])
+        assert "no recipe" in beats_text.lower()
+        assert act0["zero_setup_specific"]["no_recipe_dependency"] is True
+
+    def test_act0_demonstrates_persona_quality(self):
+        from app.demo_script import DEMO_ACTS
+        act0 = DEMO_ACTS[0]
+        assert act0["zero_setup_specific"]["persona_quality_demo"] is True
+        beats_text = " ".join(act0["beats"])
+        assert "persona" in beats_text.lower()
+
+    def test_act0_demonstrates_interruption_handling(self):
+        from app.demo_script import DEMO_ACTS
+        act0 = DEMO_ACTS[0]
+        assert act0["zero_setup_specific"]["interruption_handling_demo"] is True
+        assert "UX-13" in act0["ux_requirements"]
+        beats_text = " ".join(act0["beats"])
+        assert "interrupt" in beats_text.lower()
+
+    def test_act0_voice_first(self):
+        from app.demo_script import DEMO_ACTS
+        act0 = DEMO_ACTS[0]
+        assert act0["zero_setup_specific"]["voice_first"] is True
+        beats_text = " ".join(act0["beats"])
+        assert "voice" in beats_text.lower() or "call" in beats_text.lower()
+
+    def test_act0_max_two_taps(self):
+        from app.demo_script import DEMO_ACTS
+        act0 = DEMO_ACTS[0]
+        assert act0["zero_setup_specific"]["max_taps_to_conversation"] <= 2
+
+    def test_demo_validation_still_passes(self):
+        from app.demo_script import validate_demo_coverage
+        result = validate_demo_coverage()
+        assert result["valid"] is True
+        assert result["all_ux_covered"] is True
+        assert result["all_sc_covered"] is True
+        assert result["fits_time_cap"] is True
+
+
 class TestZeroSetupMetrics:
     """Task 9.9 — Metrics and judging alignment for zero-setup path."""
 

@@ -12,15 +12,26 @@ DEMO_ACTS = [
     {
         "act": 0,
         "title": "Zero-Setup Proof",
-        "duration_range": (15, 20),
+        "duration_range": (15, 25),
         "beats": [
-            "Open app → tap Cook Now (Seasoned Chef Buddy)",
+            "Open app → tap Cook Now (Seasoned Chef Buddy) — no recipe needed",
+            "Call-like UX appears: voice/video-first, no keyboard",
+            "Tap Start Cooking → Buddy greets with warm persona",
             "Say: 'I want something quick with eggs'",
-            "Buddy gives immediate first action + timer suggestion",
+            "Buddy gives immediate first action + timer suggestion (no recipe dependency)",
+            "Interrupt mid-sentence: 'Wait, I also have cheese' — Buddy adapts instantly",
+            "Buddy adjusts plan on the fly, demonstrating persona quality",
             "Exit and continue main scripted flow",
         ],
-        "ux_requirements": [],
-        "success_criteria": [],
+        "ux_requirements": ["UX-13"],
+        "success_criteria": [4],
+        "zero_setup_specific": {
+            "no_recipe_dependency": True,
+            "voice_first": True,
+            "max_taps_to_conversation": 2,
+            "persona_quality_demo": True,
+            "interruption_handling_demo": True,
+        },
     },
     {
         "act": 1,
@@ -72,7 +83,7 @@ DEMO_ACTS = [
     {
         "act": 4,
         "title": "Taste & Completion",
-        "duration_range": (30, 35),
+        "duration_range": (25, 30),
         "beats": [
             "Combine pasta + sauce → Prompted taste check [SC-4]",
             "User: 'It needs something' → Diagnostic flow",
