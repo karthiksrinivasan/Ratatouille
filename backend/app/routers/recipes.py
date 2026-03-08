@@ -9,6 +9,7 @@ from app.auth.firebase import get_current_user
 from app.models.recipe import RecipeCreate, Recipe, RecipeStep, RecipeFromURLRequest
 from app.services.firestore import db
 from app.services.gemini import gemini_client, MODEL_FLASH
+from app.services.ingredients import normalize_ingredient
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +72,14 @@ def _build_recipe_data(body: RecipeCreate, recipe_id: str, uid: str) -> dict:
         tag for step in body.steps for tag in step.technique_tags
     ))
 
-    # Normalize ingredient names for matching
+    # Auto-fill name_normalized on ingredients if missing
+    for ing in body.ingredients:
+        if not ing.name_normalized:
+            ing.name_normalized = normalize_ingredient(ing.name)
+
+    # Flat normalized list for matching
     ingredients_normalized = [
-        ing.name_normalized or ing.name.lower().strip()
-        for ing in body.ingredients
+        ing.name_normalized for ing in body.ingredients
     ]
 
     recipe_data = {
