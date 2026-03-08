@@ -1,10 +1,18 @@
-"""WebSocket live channel for real-time cooking sessions (Epic 4)."""
+"""WebSocket live channel for real-time cooking sessions (Epic 4 + Epic 5)."""
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from firebase_admin import auth as firebase_auth
 
 from app.services.firestore import db
 from app.services.sessions import persist_session_state, log_session_event
+from app.services.timers import TimerSystem
+from app.services.processes import (
+    initialize_processes_from_recipe,
+    push_process_bar,
+    auto_delegate_stable_processes,
+    escalate_passive_process,
+    persist_process_state as persist_process,
+)
 from app.agents.orchestrator import create_session_orchestrator
 
 router = APIRouter()
@@ -62,6 +70,39 @@ async def live_session(websocket: WebSocket, session_id: str):
     # Initialize orchestrator
     orchestrator = await create_session_orchestrator(session, recipe)
 
+    # --- Epic 5: Initialize process tracking ---
+    processes = await initialize_processes_from_recipe(session_id, recipe)
+    orchestrator.state["processes"] = processes
+
+    # Timer callbacks that send WS messages + persist state
+    async def on_timer_due(process_id: str, process_name: str):
+        # Escalate passive processes back to attention
+        escalate_passive_process(processes, process_id)
+        # Flag as needs_attention for active processes
+        for p in processes:
+            if p["process_id"] == process_id and p["state"] != "needs_attention":
+                p["state"] = "needs_attention"
+        await websocket.send_json({
+            "type": "timer_alert",
+            "process_id": process_id,
+            "process_name": process_name,
+            "priority": "P0",
+            "message": f"{process_name} is done! Time to check.",
+        })
+        await persist_process(session_id, process_id, {"state": "needs_attention"})
+        await push_process_bar(websocket, processes)
+
+    async def on_timer_warning(process_id: str, process_name: str, remaining_seconds: int):
+        await websocket.send_json({
+            "type": "timer_warning",
+            "process_id": process_id,
+            "process_name": process_name,
+            "remaining_seconds": remaining_seconds,
+            "message": f"{process_name} — about 1 minute left.",
+        })
+
+    timer_system = TimerSystem(on_timer_due=on_timer_due, on_timer_warning=on_timer_warning)
+
     try:
         # Send initial greeting
         await websocket.send_json({
@@ -70,6 +111,10 @@ async def live_session(websocket: WebSocket, session_id: str):
                     "I'll walk you through it step by step.",
             "step": 1,
         })
+
+        # Push initial process bar state
+        if processes:
+            await push_process_bar(websocket, processes)
 
         while True:
             data = await websocket.receive_json()
@@ -107,11 +152,77 @@ async def live_session(websocket: WebSocket, session_id: str):
             elif event_type == "step_complete":
                 response = await orchestrator.advance_step()
                 await websocket.send_json(response)
+
+                current_step = orchestrator.state.get("current_step", 1)
+
+                # Auto-delegate stable processes when moving to new step
+                auto_delegate_stable_processes(processes, current_step)
+
+                # Start timers for processes matching the new step
+                for p in processes:
+                    if (
+                        p["step_number"] == current_step
+                        and p["state"] == "pending"
+                        and p.get("duration_minutes")
+                    ):
+                        p["state"] = "countdown"
+                        from datetime import datetime, timedelta
+                        p["started_at"] = datetime.utcnow().isoformat()
+                        p["due_at"] = (
+                            datetime.utcnow() + timedelta(minutes=p["duration_minutes"])
+                        ).isoformat()
+                        await timer_system.start_timer(
+                            p["process_id"], p["duration_minutes"], p["name"],
+                        )
+                        await persist_process(session_id, p["process_id"], {
+                            "state": "countdown",
+                            "started_at": p["started_at"],
+                            "due_at": p["due_at"],
+                        })
+
+                # Push updated process bar
+                await push_process_bar(websocket, processes)
+
                 # Persist step change and calibration state
                 await persist_session_state(session_id, {
-                    "current_step": orchestrator.state.get("current_step", 1),
+                    "current_step": current_step,
                     "calibration_state": orchestrator.calibration.to_dict(),
                 })
+
+            elif event_type == "process_complete":
+                # Client explicitly marks a process as done
+                process_id = data.get("process_id")
+                if process_id:
+                    for p in processes:
+                        if p["process_id"] == process_id:
+                            p["state"] = "complete"
+                            timer_system.cancel_timer(process_id)
+                            await persist_process(session_id, process_id, {"state": "complete"})
+                            break
+                    await push_process_bar(websocket, processes)
+
+            elif event_type == "process_delegate":
+                # Client delegates a process to buddy
+                process_id = data.get("process_id")
+                if process_id:
+                    for p in processes:
+                        if p["process_id"] == process_id:
+                            p["buddy_managed"] = True
+                            p["state"] = "passive"
+                            await persist_process(session_id, process_id, {
+                                "buddy_managed": True, "state": "passive",
+                            })
+                            break
+                    await push_process_bar(websocket, processes)
+
+            elif event_type == "conflict_choice":
+                # Client responds to P1 conflict
+                chosen_id = data.get("chosen_process_id")
+                if chosen_id:
+                    await websocket.send_json({
+                        "type": "conflict_resolved",
+                        "chosen_process_id": chosen_id,
+                    })
 
             elif event_type == "vision_check":
                 frame_uri = data.get("frame_uri")
@@ -145,6 +256,7 @@ async def live_session(websocket: WebSocket, session_id: str):
             })
 
     except WebSocketDisconnect:
+        timer_system.cancel_all()
         # Persist final state for resume capability
         await persist_session_state(session_id, {
             "status": "paused",
@@ -152,6 +264,7 @@ async def live_session(websocket: WebSocket, session_id: str):
             "calibration_state": orchestrator.calibration.to_dict(),
         })
     except Exception:
+        timer_system.cancel_all()
         try:
             await websocket.send_json({
                 "type": "error",

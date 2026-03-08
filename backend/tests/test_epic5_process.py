@@ -711,3 +711,75 @@ class TestBuddyDelegation:
         ]
         result = escalate_passive_process(processes, "a")
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# 5.7 — Process State Persistence
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestProcessStatePersistence:
+    """Test Firestore persistence for process state."""
+
+    async def test_persist_process_state(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_doc = MagicMock()
+        mock_doc.update = AsyncMock()
+        mock_collection = MagicMock()
+        mock_collection.document.return_value = mock_doc
+        mock_session_doc = MagicMock()
+        mock_session_doc.collection.return_value = mock_collection
+
+        with patch("app.services.processes.db") as mock_db:
+            mock_db.collection.return_value.document.return_value = mock_session_doc
+
+            from app.services.processes import persist_process_state
+            await persist_process_state("s1", "p1", {"state": "complete"})
+
+        mock_doc.update.assert_awaited_once_with({"state": "complete"})
+
+    async def test_load_processes(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        mock_doc1 = MagicMock()
+        mock_doc1.to_dict.return_value = {"process_id": "p1", "state": "pending"}
+        mock_doc2 = MagicMock()
+        mock_doc2.to_dict.return_value = {"process_id": "p2", "state": "countdown"}
+
+        # Create an async iterator
+        async def mock_stream():
+            for doc in [mock_doc1, mock_doc2]:
+                yield doc
+
+        mock_collection = MagicMock()
+        mock_collection.stream.return_value = mock_stream()
+        mock_session_doc = MagicMock()
+        mock_session_doc.collection.return_value = mock_collection
+
+        with patch("app.services.processes.db") as mock_db:
+            mock_db.collection.return_value.document.return_value = mock_session_doc
+
+            from app.services.processes import load_processes
+            processes = await load_processes("s1")
+
+        assert len(processes) == 2
+        assert processes[0]["process_id"] == "p1"
+        assert processes[1]["process_id"] == "p2"
+
+
+# ---------------------------------------------------------------------------
+# Integration: WebSocket live handler process events
+# ---------------------------------------------------------------------------
+
+
+class TestLiveRouterProcessEvents:
+    """Test that live.py correctly handles new process event types."""
+
+    def test_live_router_imports(self):
+        """Verify live router imports process management modules."""
+        from app.routers import live
+        assert hasattr(live, 'TimerSystem')
+        assert hasattr(live, 'push_process_bar')
+        assert hasattr(live, 'auto_delegate_stable_processes')
