@@ -1,6 +1,7 @@
 """Session creation helper for Epic 3 -> Epic 4 bridge."""
 
 import uuid
+from typing import Optional
 
 from google.cloud import firestore
 
@@ -10,7 +11,7 @@ from app.services.firestore import db
 async def create_session_record(
     uid: str,
     recipe_id: str,
-    mode_settings: dict | None = None,
+    mode_settings: Optional[dict] = None,
 ) -> dict:
     """Create a new cooking session record in Firestore.
 

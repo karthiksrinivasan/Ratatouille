@@ -3,6 +3,7 @@
 import json
 import re
 import uuid
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from google.cloud import firestore
@@ -23,8 +24,8 @@ router = APIRouter()
 @router.post("/inventory-scans")
 async def create_inventory_scan(
     source: str = Form(...),
-    images: list[UploadFile] | None = File(default=None),
-    video: UploadFile | None = File(default=None),
+    images: Optional[List[UploadFile]] = File(default=None),
+    video: Optional[UploadFile] = File(default=None),
     user: dict = Depends(get_current_user),
 ):
     """Accept 2-6 fridge/pantry images or 1 short video, upload to GCS, create scan record."""
@@ -220,14 +221,14 @@ async def confirm_ingredients(
 # --- Ranking helpers (FP-06) ---
 
 
-def _difficulty_score(difficulty: str | None, skill_level: str) -> float:
+def _difficulty_score(difficulty: Optional[str], skill_level: str) -> float:
     order = {"easy": 0, "medium": 1, "hard": 2}
     d = order.get((difficulty or "medium").lower(), 1)
     s = order.get((skill_level or "medium").lower(), 1)
     return max(0.0, 1.0 - (abs(d - s) * 0.5))
 
 
-def _time_score(estimated_time_min: int | None, max_time_minutes: int) -> float:
+def _time_score(estimated_time_min: Optional[int], max_time_minutes: int) -> float:
     if not estimated_time_min:
         return 0.7
     if estimated_time_min <= max_time_minutes:
