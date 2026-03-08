@@ -63,15 +63,20 @@ async def live_session(websocket: WebSocket, session_id: str):
         await websocket.close(code=4000, reason="Session not active")
         return
 
-    # Load recipe
-    recipe_doc = await db.collection("recipes").document(session["recipe_id"]).get()
-    recipe = recipe_doc.to_dict()
+    # Load recipe (optional in freestyle mode)
+    session_mode = session.get("session_mode", "recipe_guided")
+    recipe = None
+    if session.get("recipe_id"):
+        recipe_doc = await db.collection("recipes").document(session["recipe_id"]).get()
+        recipe = recipe_doc.to_dict() if recipe_doc.exists else None
 
     # Initialize orchestrator
     orchestrator = await create_session_orchestrator(session, recipe)
 
     # --- Epic 5: Initialize process tracking ---
-    processes = await initialize_processes_from_recipe(session_id, recipe)
+    processes = []
+    if recipe:
+        processes = await initialize_processes_from_recipe(session_id, recipe)
     orchestrator.state["processes"] = processes
 
     # Timer callbacks that send WS messages + persist state
@@ -105,12 +110,26 @@ async def live_session(websocket: WebSocket, session_id: str):
 
     try:
         # Send initial greeting
-        await websocket.send_json({
-            "type": "buddy_message",
-            "text": f"Let's cook {recipe.get('title', 'this recipe')}! "
-                    "I'll walk you through it step by step.",
-            "step": 1,
-        })
+        if session_mode == "freestyle":
+            freestyle_ctx = session.get("freestyle_context", {})
+            dish_goal = freestyle_ctx.get("dish_goal", "")
+            if dish_goal:
+                greeting = f"Hey! Let's make {dish_goal}. Tell me what you've got and I'll guide you."
+            else:
+                greeting = "Hey! I'm your cooking buddy. What are we making today?"
+            await websocket.send_json({
+                "type": "buddy_message",
+                "text": greeting,
+                "step": 1,
+                "session_mode": "freestyle",
+            })
+        else:
+            await websocket.send_json({
+                "type": "buddy_message",
+                "text": f"Let's cook {recipe.get('title', 'this recipe')}! "
+                        "I'll walk you through it step by step.",
+                "step": 1,
+            })
 
         # Push initial process bar state
         if processes:

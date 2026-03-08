@@ -106,3 +106,74 @@ class TestFreestyleActivation:
         plan = await _generate_freestyle_plan({})
         assert isinstance(plan["steps"], list)
         assert isinstance(plan["first_instruction"], str)
+
+
+class TestFreestyleOrchestrator:
+    """Task 9.4 — Freestyle orchestrator behavior."""
+
+    @pytest.mark.asyncio
+    async def test_create_freestyle_orchestrator(self):
+        from app.agents.orchestrator import create_session_orchestrator
+        session = {
+            "session_mode": "freestyle",
+            "freestyle_context": {
+                "dish_goal": "scrambled eggs",
+                "available_ingredients": ["eggs", "butter"],
+            },
+            "current_step": 1,
+            "mode_settings": {},
+            "calibration_state": {},
+            "uid": "u1",
+            "session_id": "s1",
+        }
+        orch = await create_session_orchestrator(session, None)
+        assert orch.state["session_mode"] == "freestyle"
+        assert orch.state["dish_goal"] == "scrambled eggs"
+        assert "eggs" in orch.state["available_ingredients"]
+
+    @pytest.mark.asyncio
+    async def test_create_recipe_orchestrator_still_works(self):
+        from app.agents.orchestrator import create_session_orchestrator
+        session = {
+            "session_mode": "recipe_guided",
+            "current_step": 1,
+            "mode_settings": {},
+            "calibration_state": {},
+            "uid": "u1",
+            "session_id": "s1",
+        }
+        recipe = {
+            "title": "Test Recipe",
+            "steps": [{"step_number": 1, "instruction": "Do step 1"}],
+        }
+        orch = await create_session_orchestrator(session, recipe)
+        assert orch.state["session_mode"] == "recipe_guided"
+        assert orch.state["recipe_title"] == "Test Recipe"
+
+    @pytest.mark.asyncio
+    async def test_freestyle_advance_step_keeps_going(self):
+        from app.agents.orchestrator import create_session_orchestrator
+        session = {
+            "session_mode": "freestyle",
+            "freestyle_context": {},
+            "current_step": 1,
+            "mode_settings": {},
+            "calibration_state": {},
+            "uid": "u1",
+            "session_id": "s1",
+        }
+        orch = await create_session_orchestrator(session, None)
+        # In freestyle, advance_step should always succeed
+        result = await orch.advance_step()
+        assert result["type"] == "buddy_message"
+        assert result["step"] == 2
+
+    def test_freestyle_tools_exist(self):
+        from app.agents.orchestrator import (
+            get_freestyle_context,
+            update_freestyle_context,
+            add_dynamic_step,
+        )
+        assert callable(get_freestyle_context)
+        assert callable(update_freestyle_context)
+        assert callable(add_dynamic_step)

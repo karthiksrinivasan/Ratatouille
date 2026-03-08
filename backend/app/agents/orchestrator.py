@@ -46,6 +46,50 @@ def get_recipe_context(tool_context: ToolContext) -> str:
     })
 
 
+# --- Freestyle-specific tools ---
+
+def get_freestyle_context(tool_context: ToolContext) -> str:
+    """Get the user's freestyle cooking context (goal, ingredients, time, equipment)."""
+    ctx = tool_context.state.get("freestyle_context", {})
+    return json.dumps({
+        "dish_goal": ctx.get("dish_goal", ""),
+        "available_ingredients": ctx.get("available_ingredients", []),
+        "equipment": ctx.get("equipment", []),
+        "time_budget_minutes": ctx.get("time_budget_minutes"),
+        "skill_self_rating": ctx.get("skill_self_rating"),
+        "dynamic_steps": tool_context.state.get("dynamic_steps", []),
+        "current_stage": tool_context.state.get("current_stage", "starting"),
+    })
+
+
+def update_freestyle_context(tool_context: ToolContext, updates: str) -> str:
+    """Update freestyle context mid-session (new ingredients, equipment, etc).
+    Pass a JSON string with keys to update."""
+    try:
+        data = json.loads(updates)
+        ctx = tool_context.state.get("freestyle_context", {})
+        for k, v in data.items():
+            if k == "available_ingredients" and isinstance(v, list):
+                existing = ctx.get("available_ingredients", [])
+                ctx["available_ingredients"] = list(set(existing + v))
+            else:
+                ctx[k] = v
+        tool_context.state["freestyle_context"] = ctx
+        return json.dumps({"status": "updated", "context": ctx})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+def add_dynamic_step(tool_context: ToolContext, step_instruction: str) -> str:
+    """Add a new dynamic step to the freestyle session plan."""
+    steps = tool_context.state.get("dynamic_steps", [])
+    step_num = len(steps) + 1
+    step = {"step_number": step_num, "instruction": step_instruction}
+    steps.append(step)
+    tool_context.state["dynamic_steps"] = steps
+    return json.dumps({"added": step, "total_steps": step_num})
+
+
 class SessionOrchestrator:
     """Wraps ADK Agent with session-aware methods for the WebSocket loop."""
 
@@ -130,6 +174,27 @@ class SessionOrchestrator:
     async def advance_step(self) -> dict:
         """Advance to the next cooking step."""
         current = self.state.get("current_step", 1)
+
+        # Freestyle mode: use dynamic steps
+        if self.state.get("session_mode") == "freestyle":
+            dynamic_steps = self.state.get("dynamic_steps", [])
+            if current < len(dynamic_steps):
+                self.state["current_step"] = current + 1
+                new_step = dynamic_steps[current]
+                return {
+                    "type": "buddy_message",
+                    "text": f"Step {current + 1}: {new_step.get('instruction', 'Next step')}",
+                    "step": current + 1,
+                }
+            # In freestyle, we can always keep going
+            self.state["current_step"] = current + 1
+            return {
+                "type": "buddy_message",
+                "text": "Nice — what's next? Tell me what you're thinking.",
+                "step": current + 1,
+            }
+
+        # Recipe-guided mode
         recipe = self.state.get("recipe", {})
         steps = recipe.get("steps", [])
         total = len(steps)
@@ -264,29 +329,103 @@ When the user asks about doneness or "does this look right", suggest using
 the vision check feature or generate a guide image for comparison."""
 
 
-async def create_session_orchestrator(session: dict, recipe: dict) -> SessionOrchestrator:
-    """Create and initialize the session orchestrator agent."""
-    session_state = {
-        "recipe": recipe,
-        "recipe_title": recipe.get("title", "this recipe"),
-        "current_step": session.get("current_step", 1),
-        "total_steps": len(recipe.get("steps", [])),
-        "ambient_listen": session.get("mode_settings", {}).get("ambient_listen", False),
-        "calibration_level": "standard",
-        "calibration_state": session.get("calibration_state", {}),
-        "uid": session.get("uid", ""),
-        "session_id": session.get("session_id", ""),
-    }
+FREESTYLE_INSTRUCTION = """You are Ratatouille, a warm and confident cooking buddy in freestyle mode.
+The user has no saved recipe — you are coaching them live based on what they tell you.
 
-    agent = Agent(
-        model=MODEL_FLASH,
-        name="session_orchestrator",
-        instruction=ORCHESTRATOR_INSTRUCTION,
-        tools=[
-            FunctionTool(get_current_step),
-            FunctionTool(advance_to_next_step),
-            FunctionTool(get_recipe_context),
-        ],
-    )
+## Your Persona (MAINTAIN CONSISTENTLY — this is judged)
+You are an experienced home-cook friend — NOT a professional chef, NOT a
+robotic assistant. Think of the friend who's cooked everything and is hanging
+out in your kitchen riffing together.
+- Warm, calm, lightly humorous (dry wit, not corny)
+- Uses casual contractions ("you'll", "that's", "don't worry")
+- Occasionally uses food-lover language ("oh, that smell is gorgeous")
+- NEVER uses corporate/assistant phrasing ("I'd be happy to help", "Certainly!")
+- NEVER breaks character into a generic AI assistant
+- Calm urgency for safety moments — firm but not panicky
+
+## Freestyle Coaching Rules
+- Prefer concrete actions over long explanations
+- Give one instruction at a time
+- Dynamically create/adjust steps as the user reports progress
+- If the user mentions ingredients, update your mental model
+- Keep track of cooking stages: prep, heat, cook, season, plate
+- Handle interruptions (barge-in) by stopping and addressing the new intent
+- If confidence is low, ask a clarifying question instead of guessing
+- Prioritize safety warnings (hot oil, food safety, burning risk)
+- Reference sensory cues: sight, sound, smell, touch
+- If user says "I have..." or lists items, use those to guide suggestions
+
+Current stage: {current_stage}
+Calibration level: {calibration_level}
+
+User context:
+- Goal: {dish_goal}
+- Ingredients: {available_ingredients}
+- Time budget: {time_budget}
+- Equipment: {equipment}
+"""
+
+
+async def create_session_orchestrator(session: dict, recipe: Optional[dict] = None) -> SessionOrchestrator:
+    """Create and initialize the session orchestrator agent."""
+    session_mode = session.get("session_mode", "recipe_guided")
+    freestyle_ctx = session.get("freestyle_context", {})
+
+    if session_mode == "freestyle":
+        session_state = {
+            "recipe": {},
+            "session_mode": "freestyle",
+            "freestyle_context": freestyle_ctx,
+            "dish_goal": freestyle_ctx.get("dish_goal", "not specified yet"),
+            "available_ingredients": ", ".join(freestyle_ctx.get("available_ingredients", [])) or "not specified yet",
+            "time_budget": f"{freestyle_ctx.get('time_budget_minutes', 'flexible')} minutes"
+                if freestyle_ctx.get("time_budget_minutes") else "flexible",
+            "equipment": ", ".join(freestyle_ctx.get("equipment", [])) or "whatever you have",
+            "current_step": session.get("current_step", 1),
+            "current_stage": "starting",
+            "dynamic_steps": [],
+            "total_steps": 0,
+            "ambient_listen": session.get("mode_settings", {}).get("ambient_listen", False),
+            "calibration_level": "standard",
+            "calibration_state": session.get("calibration_state", {}),
+            "uid": session.get("uid", ""),
+            "session_id": session.get("session_id", ""),
+        }
+
+        agent = Agent(
+            model=MODEL_FLASH,
+            name="freestyle_orchestrator",
+            instruction=FREESTYLE_INSTRUCTION,
+            tools=[
+                FunctionTool(get_freestyle_context),
+                FunctionTool(update_freestyle_context),
+                FunctionTool(add_dynamic_step),
+            ],
+        )
+    else:
+        recipe = recipe or {}
+        session_state = {
+            "recipe": recipe,
+            "recipe_title": recipe.get("title", "this recipe"),
+            "current_step": session.get("current_step", 1),
+            "total_steps": len(recipe.get("steps", [])),
+            "session_mode": "recipe_guided",
+            "ambient_listen": session.get("mode_settings", {}).get("ambient_listen", False),
+            "calibration_level": "standard",
+            "calibration_state": session.get("calibration_state", {}),
+            "uid": session.get("uid", ""),
+            "session_id": session.get("session_id", ""),
+        }
+
+        agent = Agent(
+            model=MODEL_FLASH,
+            name="session_orchestrator",
+            instruction=ORCHESTRATOR_INSTRUCTION,
+            tools=[
+                FunctionTool(get_current_step),
+                FunctionTool(advance_to_next_step),
+                FunctionTool(get_recipe_context),
+            ],
+        )
 
     return SessionOrchestrator(agent=agent, session_state=session_state)
