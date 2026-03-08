@@ -1,6 +1,7 @@
 import json
 import logging
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from google.cloud import firestore
@@ -101,6 +102,10 @@ async def create_recipe(body: RecipeCreate, user: dict = Depends(get_current_use
     body.steps = await extract_technique_tags(body.steps)
     recipe_data = _build_recipe_data(body, recipe_id, user["uid"])
     await db.collection("recipes").document(recipe_id).set(recipe_data)
+    # Replace SERVER_TIMESTAMP sentinels with real datetimes for the response
+    now = datetime.utcnow()
+    recipe_data["created_at"] = now
+    recipe_data["updated_at"] = now
     return recipe_data
 
 
@@ -149,6 +154,10 @@ Return ONLY valid JSON.""",
     recipe_create.steps = await extract_technique_tags(recipe_create.steps)
     recipe_data = _build_recipe_data(recipe_create, recipe_id, user["uid"])
     await db.collection("recipes").document(recipe_id).set(recipe_data)
+    # Replace SERVER_TIMESTAMP sentinels with real datetimes for the response
+    now = datetime.utcnow()
+    recipe_data["created_at"] = now
+    recipe_data["updated_at"] = now
     return recipe_data
 
 
@@ -190,6 +199,9 @@ async def update_recipe(
     # Preserve original created_at, only update updated_at
     del update_data["created_at"]
     await doc_ref.update(update_data)
+    # Replace SERVER_TIMESTAMP sentinel with real datetime for the response
+    update_data["updated_at"] = datetime.utcnow()
+    update_data["created_at"] = data.get("created_at", datetime.utcnow())
     return update_data
 
 

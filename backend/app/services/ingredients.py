@@ -10,7 +10,9 @@ def normalize_ingredient(name: str) -> str:
     # Remove parenthetical qualifiers
     name = re.sub(r"\([^)]*\)", "", name).strip()
     # Remove trailing 's' for basic depluralization
-    if name.endswith("es") and not name.endswith("ies"):
+    if name.endswith("oes"):
+        name = name[:-2]  # tomatoes -> tomato, potatoes -> potato
+    elif name.endswith("es") and not name.endswith("ies"):
         name = name[:-2] if name[-3] in "shxz" else name[:-1]
     elif name.endswith("ies"):
         name = name[:-3] + "y"

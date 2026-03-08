@@ -5,24 +5,24 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 
 import 'package:ratatouille/core/api_client.dart';
-import 'package:ratatouille/core/auth_service.dart';
 
-/// A minimal fake [AuthService] that returns a fixed token.
-class FakeAuthService extends AuthService {
+/// A minimal fake that provides a token without requiring Firebase.
+/// Uses the [tokenProvider] constructor parameter of [ApiClient] instead of
+/// extending [AuthService] (which needs Firebase.initializeApp).
+class FakeTokenProvider {
   final String? fakeToken;
 
-  FakeAuthService({this.fakeToken = 'test-token-123'});
+  FakeTokenProvider({this.fakeToken = 'test-token-123'});
 
-  @override
-  Future<String?> getIdToken({bool forceRefresh = false}) async => fakeToken;
+  Future<String?> call() async => fakeToken;
 }
 
 void main() {
   group('ApiClient', () {
-    late FakeAuthService authService;
+    late FakeTokenProvider tokenProvider;
 
     setUp(() {
-      authService = FakeAuthService();
+      tokenProvider = FakeTokenProvider();
     });
 
     test('GET request sends auth header and parses JSON', () async {
@@ -43,7 +43,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        authService: authService,
+        tokenProvider: tokenProvider,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -70,7 +70,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        authService: authService,
+        tokenProvider: tokenProvider,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -94,7 +94,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        authService: authService,
+        tokenProvider: tokenProvider,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -122,7 +122,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        authService: authService,
+        tokenProvider: tokenProvider,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -139,7 +139,7 @@ void main() {
     });
 
     test('sends request without auth when token is null', () async {
-      final noAuthService = FakeAuthService(fakeToken: null);
+      final noTokenProvider = FakeTokenProvider(fakeToken: null);
 
       final mockClient = http_testing.MockClient((request) async {
         expect(request.headers.containsKey('authorization'), isFalse);
@@ -147,7 +147,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        authService: noAuthService,
+        tokenProvider: noTokenProvider,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -165,7 +165,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        authService: authService,
+        tokenProvider: tokenProvider,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -183,7 +183,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        authService: authService,
+        tokenProvider: tokenProvider,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -205,7 +205,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        authService: authService,
+        tokenProvider: tokenProvider,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );

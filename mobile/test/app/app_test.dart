@@ -1,19 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 import 'package:ratatouille/app/app.dart';
 import 'package:ratatouille/app/theme.dart';
+import 'package:ratatouille/core/api_client.dart';
+import 'package:ratatouille/features/recipes/providers/recipe_provider.dart';
 
 void main() {
   group('RatatouilleApp', () {
     testWidgets('renders MaterialApp with correct title', (tester) async {
-      // The full app requires Firebase initialization, so we test the
-      // theme and structure in isolation here.
-      await tester.pumpWidget(const RatatouilleApp());
-      await tester.pumpAndSettle();
+      // Provide the RecipeProvider required by the initial route
+      // (RecipeListScreen). Use a dummy ApiClient with a no-op token provider.
+      final dummyApiClient = ApiClient(
+        tokenProvider: () async => null,
+        baseUrl: 'http://localhost',
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider(
+          create: (_) => RecipeProvider(apiClient: dummyApiClient),
+          child: const RatatouilleApp(),
+        ),
+      );
+      await tester.pump();
 
       // Verify the app renders without crashing.
       expect(find.byType(MaterialApp), findsOneWidget);
+
+      dummyApiClient.dispose();
     });
   });
 
