@@ -240,3 +240,54 @@ class TestInSessionContextCapture:
         # advance_step should work with no context
         result = await orch.advance_step()
         assert result["type"] == "buddy_message"
+
+
+class TestProcessTimerFreestyle:
+    """Task 9.6 — Process/timer compatibility for freestyle."""
+
+    def test_create_dynamic_process_function_exists(self):
+        from app.services.processes import create_dynamic_process
+        assert callable(create_dynamic_process)
+
+    def test_build_process_bar_with_empty_list(self):
+        import asyncio
+        from app.services.processes import build_process_bar_state
+        result = asyncio.get_event_loop().run_until_complete(
+            build_process_bar_state([])
+        )
+        assert result["type"] == "process_update"
+        assert result["active_count"] == 0
+
+    def test_build_process_bar_with_dynamic_process(self):
+        import asyncio
+        from app.services.processes import build_process_bar_state
+        processes = [{
+            "process_id": "p1",
+            "name": "Boil pasta",
+            "state": "countdown",
+            "priority": "P2",
+            "due_at": "2025-01-01T12:10:00",
+            "dynamic": True,
+        }]
+        result = asyncio.get_event_loop().run_until_complete(
+            build_process_bar_state(processes)
+        )
+        assert result["active_count"] == 1
+        assert result["next_due"] is not None
+
+    @pytest.mark.asyncio
+    async def test_freestyle_session_starts_with_empty_processes(self):
+        """Freestyle sessions start with no processes."""
+        from app.agents.orchestrator import create_session_orchestrator
+        session = {
+            "session_mode": "freestyle",
+            "freestyle_context": {},
+            "current_step": 1,
+            "mode_settings": {},
+            "calibration_state": {},
+            "uid": "u1",
+            "session_id": "s1",
+        }
+        orch = await create_session_orchestrator(session, None)
+        # No processes by default in freestyle
+        assert orch.state.get("processes") is None or orch.state.get("processes") == []

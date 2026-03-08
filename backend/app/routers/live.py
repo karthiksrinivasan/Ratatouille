@@ -8,6 +8,7 @@ from app.services.sessions import persist_session_state, log_session_event
 from app.services.timers import TimerSystem
 from app.services.processes import (
     initialize_processes_from_recipe,
+    create_dynamic_process,
     push_process_bar,
     auto_delegate_stable_processes,
     escalate_passive_process,
@@ -267,6 +268,33 @@ async def live_session(websocket: WebSocket, session_id: str):
                     "type": "context_updated",
                     "freestyle_context": ctx,
                 })
+
+            elif event_type == "add_timer":
+                # Dynamic process/timer creation for freestyle mode
+                timer_name = data.get("name", "Timer")
+                duration = data.get("duration_minutes")
+                if duration:
+                    current_step = orchestrator.state.get("current_step", 1)
+                    new_process = await create_dynamic_process(
+                        session_id, timer_name, duration, current_step,
+                    )
+                    processes.append(new_process)
+                    # Start timer immediately
+                    new_process["state"] = "countdown"
+                    from datetime import datetime, timedelta
+                    new_process["started_at"] = datetime.utcnow().isoformat()
+                    new_process["due_at"] = (
+                        datetime.utcnow() + timedelta(minutes=duration)
+                    ).isoformat()
+                    await timer_system.start_timer(
+                        new_process["process_id"], duration, timer_name,
+                    )
+                    await persist_process(session_id, new_process["process_id"], {
+                        "state": "countdown",
+                        "started_at": new_process["started_at"],
+                        "due_at": new_process["due_at"],
+                    })
+                    await push_process_bar(websocket, processes)
 
             elif event_type == "ambient_toggle":
                 enabled = data.get("enabled", False)

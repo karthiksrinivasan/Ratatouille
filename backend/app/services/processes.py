@@ -240,3 +240,40 @@ async def load_processes(session_id: str) -> list[dict]:
     async for doc in docs:
         processes.append(doc.to_dict())
     return processes
+
+
+# ---------------------------------------------------------------------------
+# 9.6 — Dynamic Process Creation for Freestyle
+# ---------------------------------------------------------------------------
+
+async def create_dynamic_process(
+    session_id: str,
+    name: str,
+    duration_minutes: Optional[float] = None,
+    step_number: int = 0,
+    priority: str = "P2",
+) -> dict:
+    """Create a process entry dynamically during a freestyle session.
+
+    Used when the buddy infers a timed process (e.g., 'boil pasta for 10 min').
+    Returns the process dict.
+    """
+    process = {
+        "process_id": str(uuid.uuid4()),
+        "session_id": session_id,
+        "name": name,
+        "step_number": step_number,
+        "priority": priority,
+        "state": "pending",
+        "started_at": None,
+        "due_at": None,
+        "duration_minutes": duration_minutes,
+        "buddy_managed": False,
+        "is_parallel": False,
+        "dynamic": True,  # Flag to identify dynamically created processes
+    }
+
+    await db.collection("sessions").document(session_id) \
+        .collection("processes").document(process["process_id"]).set(process)
+
+    return process
