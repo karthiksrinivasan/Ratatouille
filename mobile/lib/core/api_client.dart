@@ -27,18 +27,25 @@ class ApiException implements Exception {
   bool get isServerError => statusCode >= 500;
 }
 
+/// Signature for a function that provides an auth token.
+typedef TokenProvider = Future<String?> Function();
+
 /// HTTP client wrapper with auth token injection and error handling.
 class ApiClient {
-  final AuthService authService;
+  final AuthService? authService;
+  final TokenProvider? _tokenProvider;
   final http.Client _httpClient;
   final String _baseUrl;
 
   ApiClient({
-    required this.authService,
+    this.authService,
+    TokenProvider? tokenProvider,
     http.Client? httpClient,
     String? baseUrl,
-  })  : _httpClient = httpClient ?? http.Client(),
-        _baseUrl = baseUrl ?? EnvConfig.backendUrl;
+  })  : _tokenProvider = tokenProvider,
+        _httpClient = httpClient ?? http.Client(),
+        _baseUrl = baseUrl ??
+            (authService != null ? EnvConfig.backendUrl : 'http://localhost');
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -53,6 +60,17 @@ class ApiClient {
     final headers = await _authHeaders();
     final response = await _httpClient.get(uri, headers: headers);
     return _handleResponse(response);
+  }
+
+  /// Send a GET request expecting a JSON array response.
+  Future<List<dynamic>> getList(
+    String path, {
+    Map<String, String>? queryParams,
+  }) async {
+    final uri = _buildUri(path, queryParams);
+    final headers = await _authHeaders();
+    final response = await _httpClient.get(uri, headers: headers);
+    return _handleListResponse(response);
   }
 
   /// Send a POST request with a JSON body.
@@ -142,7 +160,15 @@ class ApiClient {
       HttpHeaders.acceptHeader: 'application/json',
     };
 
-    final token = await authService.getIdToken();
+    final String? token;
+    if (_tokenProvider != null) {
+      token = await _tokenProvider();
+    } else if (authService != null) {
+      token = await authService!.getIdToken();
+    } else {
+      token = null;
+    }
+
     if (token != null) {
       headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
     }
@@ -158,6 +184,24 @@ class ApiClient {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return body;
     }
+
+    throw ApiException(
+      statusCode: response.statusCode,
+      message: body['detail']?.toString() ?? 'Request failed',
+      details: body,
+    );
+  }
+
+  List<dynamic> _handleListResponse(http.Response response) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.body.isNotEmpty
+          ? jsonDecode(response.body) as List<dynamic>
+          : <dynamic>[];
+    }
+
+    final body = response.body.isNotEmpty
+        ? jsonDecode(response.body) as Map<String, dynamic>
+        : <String, dynamic>{};
 
     throw ApiException(
       statusCode: response.statusCode,

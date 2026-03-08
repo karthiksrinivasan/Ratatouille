@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/recipes/screens/ingredient_checklist_screen.dart';
+import '../features/recipes/screens/recipe_create_screen.dart';
+import '../features/recipes/screens/recipe_detail_screen.dart';
+import '../features/recipes/screens/recipe_list_screen.dart';
 import '../features/scan/screens/scan_screen.dart';
 import '../features/suggestions/screens/suggestions_screen.dart';
 import '../features/live_session/screens/live_session_screen.dart';
@@ -12,10 +16,20 @@ class AppRoutes {
   AppRoutes._();
 
   static const String scan = '/scan';
+  static const String recipes = '/recipes';
+  static const String recipeDetail = '/recipes/:id';
+  static const String recipeCreate = '/recipes/create';
+  static const String ingredientChecklist = '/recipes/:id/checklist';
   static const String suggestions = '/suggestions';
   static const String session = '/session/:id';
   static const String visionGuide = '/vision-guide/:id';
   static const String postSession = '/post-session/:id';
+
+  /// Build a recipe detail path with the given [id].
+  static String recipeDetailPath(String id) => '/recipes/$id';
+
+  /// Build an ingredient checklist path with the given [id].
+  static String ingredientChecklistPath(String id) => '/recipes/$id/checklist';
 
   /// Build a session path with the given [id].
   static String sessionPath(String id) => '/session/$id';
@@ -29,14 +43,48 @@ class AppRoutes {
 
 /// Top-level router configuration for the app.
 final GoRouter appRouter = GoRouter(
-  initialLocation: AppRoutes.scan,
+  initialLocation: AppRoutes.recipes,
   debugLogDiagnostics: true,
   routes: [
-    // Scan / pantry capture flow (home screen)
+    // Scan / pantry capture flow
     GoRoute(
       path: AppRoutes.scan,
       name: 'scan',
       builder: (context, state) => const ScanScreen(),
+    ),
+
+    // Recipe library
+    GoRoute(
+      path: AppRoutes.recipes,
+      name: 'recipes',
+      builder: (context, state) => const RecipeListScreen(),
+    ),
+
+    // Create recipe (must be before :id to avoid conflict)
+    GoRoute(
+      path: AppRoutes.recipeCreate,
+      name: 'recipeCreate',
+      builder: (context, state) => const RecipeCreateScreen(),
+    ),
+
+    // Recipe detail
+    GoRoute(
+      path: AppRoutes.recipeDetail,
+      name: 'recipeDetail',
+      builder: (context, state) {
+        final id = state.pathParameters['id']!;
+        return RecipeDetailScreen(recipeId: id);
+      },
+    ),
+
+    // Ingredient checklist gate
+    GoRoute(
+      path: AppRoutes.ingredientChecklist,
+      name: 'ingredientChecklist',
+      builder: (context, state) {
+        final id = state.pathParameters['id']!;
+        return IngredientChecklistScreen(recipeId: id);
+      },
     ),
 
     // Recipe suggestions (dual-lane)
@@ -98,7 +146,7 @@ final GoRouter appRouter = GoRouter(
           ),
           const SizedBox(height: 24),
           ElevatedButton(
-            onPressed: () => context.go(AppRoutes.scan),
+            onPressed: () => context.go(AppRoutes.recipes),
             child: const Text('Go Home'),
           ),
         ],
