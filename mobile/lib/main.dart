@@ -9,6 +9,7 @@ import 'app/app.dart';
 import 'core/env_config.dart';
 import 'core/api_client.dart';
 import 'core/auth_service.dart';
+import 'core/connectivity.dart';
 import 'features/recipes/providers/recipe_provider.dart';
 import 'features/scan/providers/scan_provider.dart';
 
@@ -29,6 +30,7 @@ Future<void> main() async {
   );
 
   // Create core services.
+  final connectivityService = ConnectivityService();
   final authService = AuthService();
 
   // Auto sign-in anonymously if no user is signed in.
@@ -47,6 +49,8 @@ Future<void> main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider<ConnectivityService>.value(
+            value: connectivityService),
         ChangeNotifierProvider<AuthService>.value(value: authService),
         Provider<ApiClient>.value(value: apiClient),
         ChangeNotifierProvider<RecipeProvider>(
