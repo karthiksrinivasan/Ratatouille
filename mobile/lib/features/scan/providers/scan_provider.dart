@@ -228,4 +228,12 @@ class ScanProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
   }
+
+  /// Set suggestions directly (for testing).
+  @visibleForTesting
+  void setSuggestionsForTest(SuggestionsResponse suggestions) {
+    _suggestions = suggestions;
+    _phase = ScanPhase.done;
+    notifyListeners();
+  }
 }
