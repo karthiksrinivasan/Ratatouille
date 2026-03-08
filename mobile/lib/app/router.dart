@@ -12,6 +12,7 @@ import '../features/suggestions/screens/suggestions_screen.dart';
 import '../features/live_session/screens/live_session_screen.dart';
 import '../features/live_session/screens/session_setup_screen.dart';
 import '../features/vision_guide/screens/vision_guide_screen.dart';
+import '../features/live_session/screens/cook_now_screen.dart';
 import '../features/post_session/screens/post_session_screen.dart';
 
 /// Route path constants for type-safe navigation.
@@ -26,6 +27,7 @@ class AppRoutes {
   static const String recipeDetail = '/recipes/:id';
   static const String recipeCreate = '/recipes/create';
   static const String ingredientChecklist = '/recipes/:id/checklist';
+  static const String cookNow = '/cook-now';
   static const String suggestions = '/suggestions';
   static const String sessionSetup = '/session/:id/setup';
   static const String session = '/session/:id';
@@ -114,6 +116,13 @@ final GoRouter appRouter = GoRouter(
         final id = state.pathParameters['id']!;
         return IngredientChecklistScreen(recipeId: id);
       },
+    ),
+
+    // Cook Now — zero-setup freestyle entry
+    GoRoute(
+      path: AppRoutes.cookNow,
+      name: 'cookNow',
+      builder: (context, state) => const CookNowScreen(),
     ),
 
     // Recipe suggestions (dual-lane)

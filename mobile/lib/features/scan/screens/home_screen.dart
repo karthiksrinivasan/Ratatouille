@@ -17,68 +17,82 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(Spacing.pagePadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: Spacing.xl),
+        child: CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.all(Spacing.pagePadding),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  const SizedBox(height: Spacing.xl),
 
-              // App title
-              Text(
-                'Ratatouille',
-                style: theme.textTheme.displayMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: Spacing.sm),
-              Text(
-                'Your AI cooking companion',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-
-              const SizedBox(height: Spacing.xxl),
-
-              // Primary CTA — Scan from Fridge/Pantry
-              _EntryCard(
-                icon: Icons.camera_alt_rounded,
-                title: 'Cook from Fridge or Pantry',
-                subtitle:
-                    'Snap photos of what you have and get recipe suggestions',
-                onTap: () => context.go(AppRoutes.scan),
-                isPrimary: true,
-              ),
-
-              const SizedBox(height: Spacing.md),
-
-              // Secondary — Browse Recipes
-              _EntryCard(
-                icon: Icons.menu_book_rounded,
-                title: 'Browse Recipes',
-                subtitle: 'View your saved recipes and start cooking',
-                onTap: () => context.go(AppRoutes.recipes),
-                isPrimary: false,
-              ),
-
-              const Spacer(),
-
-              // Version hint
-              Text(
-                'Hackathon MVP',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.5,
+                  // App title
+                  Text(
+                    'Ratatouille',
+                    style: theme.textTheme.displayMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-                textAlign: TextAlign.center,
+                  const SizedBox(height: Spacing.sm),
+                  Text(
+                    'Your AI cooking companion',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: Spacing.xxl),
+
+                  // Primary CTA — Scan from Fridge/Pantry
+                  _EntryCard(
+                    icon: Icons.camera_alt_rounded,
+                    title: 'Cook from Fridge or Pantry',
+                    subtitle:
+                        'Snap photos of what you have and get recipe suggestions',
+                    onTap: () => context.go(AppRoutes.scan),
+                    isPrimary: true,
+                  ),
+
+                  const SizedBox(height: Spacing.md),
+
+                  // Equal-priority — Cook Now (freestyle, no recipe needed)
+                  _EntryCard(
+                    icon: Icons.mic_rounded,
+                    title: 'Cook Now',
+                    subtitle: 'No recipe needed — get live AI help instantly',
+                    onTap: () => context.go(AppRoutes.cookNow),
+                    isPrimary: true,
+                  ),
+
+                  const SizedBox(height: Spacing.md),
+
+                  // Secondary — Browse Recipes
+                  _EntryCard(
+                    icon: Icons.menu_book_rounded,
+                    title: 'Browse Recipes',
+                    subtitle: 'View your saved recipes and start cooking',
+                    onTap: () => context.go(AppRoutes.recipes),
+                    isPrimary: false,
+                  ),
+
+                  const SizedBox(height: Spacing.xl),
+
+                  // Version hint
+                  Text(
+                    'Hackathon MVP',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: Spacing.md),
+                ]),
               ),
-              const SizedBox(height: Spacing.md),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

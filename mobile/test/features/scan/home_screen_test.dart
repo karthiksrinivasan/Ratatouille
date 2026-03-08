@@ -30,6 +30,11 @@ void main() {
       await tester.pumpWidget(
         const MaterialApp(home: HomeScreen()),
       );
+      // Scroll down to reveal footer
+      await tester.scrollUntilVisible(
+        find.text('Hackathon MVP'),
+        200,
+      );
       expect(find.text('Hackathon MVP'), findsOneWidget);
     });
 
