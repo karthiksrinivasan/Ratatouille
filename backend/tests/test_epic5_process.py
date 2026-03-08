@@ -624,3 +624,90 @@ class TestRecipeProcessInitialization:
             assert p["buddy_managed"] is False
             assert p["session_id"] == "s1"
             assert p["process_id"]  # non-empty UUID
+
+
+# ---------------------------------------------------------------------------
+# 5.6 — Buddy-Managed Delegation
+# ---------------------------------------------------------------------------
+
+
+class TestBuddyDelegation:
+    """Test buddy-managed delegation of stable processes."""
+
+    def test_auto_delegate_stable_p3_processes(self):
+        from app.services.processes import auto_delegate_stable_processes
+        processes = [
+            {"process_id": "a", "state": "in_progress", "step_number": 1, "priority": "P3", "buddy_managed": False},
+            {"process_id": "b", "state": "in_progress", "step_number": 2, "priority": "P2", "buddy_managed": False},
+        ]
+        delegated = auto_delegate_stable_processes(processes, active_step=2)
+        assert delegated == ["a"]
+        assert processes[0]["state"] == "passive"
+        assert processes[0]["buddy_managed"] is True
+        # P2 process not delegated
+        assert processes[1]["state"] == "in_progress"
+
+    def test_auto_delegate_p4_processes(self):
+        from app.services.processes import auto_delegate_stable_processes
+        processes = [
+            {"process_id": "a", "state": "in_progress", "step_number": 1, "priority": "P4", "buddy_managed": False},
+        ]
+        delegated = auto_delegate_stable_processes(processes, active_step=3)
+        assert delegated == ["a"]
+
+    def test_no_delegation_for_active_step(self):
+        from app.services.processes import auto_delegate_stable_processes
+        processes = [
+            {"process_id": "a", "state": "in_progress", "step_number": 2, "priority": "P3", "buddy_managed": False},
+        ]
+        delegated = auto_delegate_stable_processes(processes, active_step=2)
+        assert delegated == []
+
+    def test_no_delegation_for_p2(self):
+        from app.services.processes import auto_delegate_stable_processes
+        processes = [
+            {"process_id": "a", "state": "in_progress", "step_number": 1, "priority": "P2", "buddy_managed": False},
+        ]
+        delegated = auto_delegate_stable_processes(processes, active_step=2)
+        assert delegated == []
+
+    def test_undelegate_process(self):
+        from app.services.processes import undelegate_process
+        processes = [
+            {"process_id": "a", "state": "passive", "buddy_managed": True},
+        ]
+        result = undelegate_process(processes, "a")
+        assert result is True
+        assert processes[0]["state"] == "in_progress"
+        assert processes[0]["buddy_managed"] is False
+
+    def test_undelegate_not_found(self):
+        from app.services.processes import undelegate_process
+        result = undelegate_process([], "nope")
+        assert result is False
+
+    def test_undelegate_non_buddy(self):
+        from app.services.processes import undelegate_process
+        processes = [
+            {"process_id": "a", "state": "in_progress", "buddy_managed": False},
+        ]
+        result = undelegate_process(processes, "a")
+        assert result is False
+
+    def test_escalate_passive_process(self):
+        from app.services.processes import escalate_passive_process
+        processes = [
+            {"process_id": "a", "state": "passive", "buddy_managed": True},
+        ]
+        result = escalate_passive_process(processes, "a")
+        assert result is True
+        assert processes[0]["state"] == "needs_attention"
+        assert processes[0]["buddy_managed"] is False
+
+    def test_escalate_non_passive(self):
+        from app.services.processes import escalate_passive_process
+        processes = [
+            {"process_id": "a", "state": "in_progress", "buddy_managed": False},
+        ]
+        result = escalate_passive_process(processes, "a")
+        assert result is False
