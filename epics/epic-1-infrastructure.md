@@ -400,6 +400,27 @@ MODEL_PRO = "gemini-2.5-pro"  # Only for high-complexity reasoning escalation
 
 ---
 
+### 1.9 Mobile Platform Bootstrap
+
+**What:** Set up the Flutter mobile baseline so UX implementation can proceed in parallel with backend epics.
+
+**Deliverables:**
+1. Flutter project structure with feature folders (`scan`, `suggestions`, `live_session`, `vision_guide`, `post_session`)
+2. Environment config strategy for backend URL + Firebase project:
+   - `dev`, `staging`, `prod` flavors
+3. Shared app shell:
+   - global theme tokens
+   - routing skeleton
+   - base error/loading patterns
+
+**Acceptance Criteria:**
+- [ ] Mobile project boots on iOS and Android simulators
+- [ ] Backend base URL is environment-configured (no hardcoded endpoints)
+- [ ] Firebase app initialization works in mobile app shell
+- [ ] Feature-module folder scaffolding exists and is committed
+
+---
+
 ## Epic Completion Checklist
 
 - [ ] GCP project with all APIs enabled
@@ -410,3 +431,4 @@ MODEL_PRO = "gemini-2.5-pro"  # Only for high-complexity reasoning escalation
 - [ ] FastAPI app running on Cloud Run with health check
 - [ ] CI/CD pipeline deploying on build submit
 - [ ] Gemini client initialized and tested
+- [ ] Mobile platform scaffold ready for Epic 8 implementation

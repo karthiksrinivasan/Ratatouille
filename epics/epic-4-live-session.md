@@ -8,6 +8,7 @@ The core product experience — a real-time, voice-primary cooking companion. Us
 
 - Epic 1 complete (Firestore, GCS, auth, Gemini client, Cloud Run)
 - Epic 2 complete (recipe data model, demo recipe available)
+- Coordinate with Epic 8 tasks 8.8 and 8.9 for mobile live-session UX + WS integration
 
 ## PRD References
 

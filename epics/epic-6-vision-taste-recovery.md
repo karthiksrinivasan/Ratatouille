@@ -7,6 +7,7 @@ Three specialist capabilities that make the cooking buddy truly multimodal: (1) 
 ## Prerequisites
 
 - Epic 4 complete (session lifecycle, WebSocket, orchestrator agent)
+- Coordinate with Epic 8 task 8.11 for vision/guide/taste/recovery mobile UX
 
 ## PRD References
 

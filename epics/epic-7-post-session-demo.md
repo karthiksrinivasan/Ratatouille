@@ -8,6 +8,7 @@ Clean session wind-down with memory persistence, structured observability, submi
 
 - All previous epics (1-6) substantially complete
 - Demo recipe seeded and functional through full flow
+- Epic 8 critical UX paths complete and validated on real devices
 
 ## PRD References
 

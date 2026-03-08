@@ -7,6 +7,7 @@ Track multiple active cooking processes simultaneously with a priority queue. Su
 ## Prerequisites
 
 - Epic 4 complete (session lifecycle, WebSocket channel, orchestrator agent)
+- Coordinate with Epic 8 task 8.10 for process bar + conflict chooser mobile UX
 
 ## PRD References
 

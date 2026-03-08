@@ -7,6 +7,7 @@ Users can create, store, and retrieve recipes. Recipes have normalized ingredien
 ## Prerequisites
 
 - Epic 1 complete (Firestore, GCS, auth, FastAPI scaffold)
+- Coordinate with Epic 8 for mobile recipe list/detail rendering contracts
 
 ## PRD References
 
@@ -458,6 +459,38 @@ app.include_router(recipes.router, prefix="/v1", tags=["recipes"])
 
 ---
 
+### 2.8 Mobile UX Implementation (Recipe Library + Ingredient Gate)
+
+**What:** Implement saved-recipe mobile UX that is tightly coupled to recipe APIs and session-start prerequisites.
+
+**Required mobile UX components:**
+1. Recipe library list:
+   - Sections: `Your Recipes` and `Demo`
+   - Sort/filter controls (`Recently used`, `Fastest`, `Difficulty`)
+   - Empty-state CTA: `Import from URL` or `Create recipe`
+2. Recipe detail view:
+   - Header with total time, difficulty, servings
+   - Ingredients list with normalized names shown clearly
+   - Step preview with technique tags and parallel-step badges
+3. Ingredient checklist gate:
+   - Per-ingredient `Have it` toggle with sticky continue CTA
+   - Missing-ingredient summary before session start
+4. Session handoff:
+   - Primary CTA: `Cook this now`
+   - Loading/error handling for start-session bridge
+5. Create/edit reliability:
+   - Validation for required fields (`title`, at least one ingredient, at least one step)
+   - Inline error messages for malformed or incomplete steps
+
+**Acceptance Criteria:**
+- [ ] `GET /v1/recipes` and `GET /v1/recipes/{id}` are rendered with loading/empty/error states
+- [ ] Ingredient checklist UX maps to structured `have/don't-have` model used by session creation flow
+- [ ] User can move from recipe detail to session setup without losing checklist state
+- [ ] Create/edit flows block invalid submission and surface actionable errors
+- [ ] Auth/network/server errors always provide retry or back navigation path
+
+---
+
 ## Epic Completion Checklist
 
 - [ ] Recipe CRUD endpoints functional with auth
@@ -467,3 +500,4 @@ app.include_router(recipes.router, prefix="/v1", tags=["recipes"])
 - [ ] Ingredient checklist model defined
 - [ ] Demo recipe seeded with visual checkpoints and guide prompts
 - [ ] Router mounted and all endpoints accessible
+- [ ] Mobile recipe library/detail/checklist UX connected to backend contracts

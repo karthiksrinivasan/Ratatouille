@@ -8,6 +8,7 @@ User captures their fridge or pantry (2-6 photos or a short video), the system d
 
 - Epic 1 complete (Firestore, GCS, auth, Gemini client)
 - Epic 2 complete (recipe data model, ingredient normalization, demo recipe seeded)
+- Coordinate with Epic 8 tasks 8.6 and 8.7 for mobile scan/suggestions UX integration
 
 ## PRD References
 
