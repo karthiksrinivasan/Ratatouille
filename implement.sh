@@ -61,7 +61,7 @@ fi
 PHASE_SEQ_PRE=(1 2)            # Sequential: foundation (must complete before parallel)
 PHASE_TRACK_A=(3)              # Parallel track A: scan & suggestions
 PHASE_TRACK_B=(4 5 6)         # Parallel track B: live session chain
-PHASE_SEQ_POST=(8 7)          # Sequential: integration & demo (after merge)
+PHASE_SEQ_POST=(8 9 7)        # Sequential: integration, final, & demo (after merge)
 
 # CLI args
 FROM_EPIC=1
