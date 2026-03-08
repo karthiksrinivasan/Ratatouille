@@ -2,3 +2,4 @@
 .epic-logs/
 .epic-venv/
 .env
+.venv/

@@ -21,8 +21,19 @@ STATE_DIR="${PROJECT_ROOT}/.epic-state"
 LOG_DIR="${PROJECT_ROOT}/.epic-logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-# Epic execution order (respects dependency graph from index.md)
-EPIC_ORDER=(1 2 3 4 5 6 7)
+# Epic execution order — auto-detected from epics/ directory
+EPIC_ORDER=()
+for f in "$EPICS_DIR"/epic-*-*.md; do
+    num=$(basename "$f" | grep -oE '^epic-[0-9]+' | grep -oE '[0-9]+')
+    [[ -n "$num" ]] && EPIC_ORDER+=("$num")
+done
+# Sort numerically and deduplicate
+IFS=$'\n' EPIC_ORDER=($(printf '%s\n' "${EPIC_ORDER[@]}" | sort -n | uniq)); unset IFS
+
+if [[ ${#EPIC_ORDER[@]} -eq 0 ]]; then
+    echo "FATAL: No epic files found in ${EPICS_DIR}"
+    exit 1
+fi
 
 # CLI args
 FROM_EPIC=1
@@ -234,8 +245,8 @@ run_build_check() {
         }
     fi
 
-    # If mobile/ exists, check Flutter analysis too
-    if [[ -d "${PROJECT_ROOT}/mobile" && -f "${PROJECT_ROOT}/mobile/pubspec.yaml" ]]; then
+    # If mobile/ exists and flutter is available, check Flutter analysis too
+    if [[ -d "${PROJECT_ROOT}/mobile" && -f "${PROJECT_ROOT}/mobile/pubspec.yaml" ]] && command -v flutter &>/dev/null; then
         log "Running Flutter analysis..."
         local flutter_output
         flutter_output=$(
