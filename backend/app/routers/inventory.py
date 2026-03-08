@@ -9,11 +9,12 @@ from google.cloud import firestore
 from google.genai import types
 
 from app.auth.firebase import get_current_user
-from app.models.inventory import IngredientConfirmation
+from app.models.inventory import IngredientConfirmation, StartSessionFromSuggestionRequest
 from app.services.firestore import db
 from app.services.gemini import MODEL_FLASH, gemini_client
 from app.services.ingredients import match_ingredients, normalize_ingredient
 from app.services.media import extract_keyframes_to_gcs
+from app.services.sessions import create_session_record
 from app.services.storage import upload_bytes
 
 router = APIRouter()
@@ -468,4 +469,133 @@ async def get_suggestions(
         "from_saved": saved_suggestions,
         "buddy_recipes": buddy_suggestions,
         "total_suggestions": len(all_suggestions),
+    }
+
+
+async def create_recipe_from_buddy_suggestion(
+    suggestion: dict,
+    available_ingredients: list[str],
+    uid: str,
+) -> str:
+    """Generate a full recipe from a buddy suggestion using Gemini."""
+    response = await gemini_client.aio.models.generate_content(
+        model=MODEL_FLASH,
+        contents=f"""Create a complete recipe for: {suggestion['title']}
+Description: {suggestion.get('description', '')}
+Available ingredients: {', '.join(available_ingredients)}
+
+Return JSON with:
+- title, description, servings, total_time_minutes, difficulty, cuisine
+- ingredients: array of {{"name", "quantity", "unit", "preparation"}}
+- steps: array of {{"step_number", "instruction", "duration_minutes", "technique_tags"}}
+
+Make it practical and achievable. Use the available ingredients as much as possible.
+Return ONLY valid JSON.""",
+    )
+
+    try:
+        parsed = json.loads(response.text)
+    except json.JSONDecodeError:
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", response.text)
+        parsed = json.loads(match.group(1)) if match else {}
+
+    recipe_id = str(uuid.uuid4())
+
+    # Build ingredients with normalized names
+    ingredients = []
+    ingredients_normalized = []
+    for ing in parsed.get("ingredients", []):
+        name = ing.get("name", "")
+        norm = normalize_ingredient(name)
+        ingredients.append(
+            {
+                "name": name,
+                "name_normalized": norm,
+                "quantity": ing.get("quantity"),
+                "unit": ing.get("unit"),
+                "preparation": ing.get("preparation"),
+            }
+        )
+        ingredients_normalized.append(norm)
+
+    recipe_data = {
+        "recipe_id": recipe_id,
+        "uid": uid,
+        "title": parsed.get("title", suggestion["title"]),
+        "description": parsed.get("description", suggestion.get("description", "")),
+        "source_type": "buddy_generated",
+        "servings": parsed.get("servings"),
+        "total_time_minutes": parsed.get("total_time_minutes"),
+        "difficulty": parsed.get("difficulty", suggestion.get("difficulty")),
+        "cuisine": parsed.get("cuisine", suggestion.get("cuisine")),
+        "ingredients": ingredients,
+        "ingredients_normalized": ingredients_normalized,
+        "steps": parsed.get("steps", []),
+        "technique_tags": [],
+        "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    }
+
+    # Aggregate technique tags from steps
+    all_tags = set()
+    for step in recipe_data["steps"]:
+        for tag in step.get("technique_tags", []):
+            all_tags.add(tag.lower())
+    recipe_data["technique_tags"] = sorted(all_tags)
+
+    await db.collection("recipes").document(recipe_id).set(recipe_data)
+    return recipe_id
+
+
+@router.post("/inventory-scans/{scan_id}/start-session")
+async def start_session_from_scan(
+    scan_id: str,
+    body: StartSessionFromSuggestionRequest,
+    user: dict = Depends(get_current_user),
+):
+    """User selects a suggestion and transitions to cooking session creation."""
+    scan_doc = await db.collection("inventory_scans").document(scan_id).get()
+    if not scan_doc.exists:
+        raise HTTPException(404, "Scan not found")
+    scan = scan_doc.to_dict()
+    if scan["uid"] != user["uid"]:
+        raise HTTPException(403, "Not your scan")
+
+    suggestion_doc = await (
+        db.collection("inventory_scans")
+        .document(scan_id)
+        .collection("suggestions")
+        .document(body.suggestion_id)
+        .get()
+    )
+    if not suggestion_doc.exists:
+        raise HTTPException(404, "Suggestion not found")
+    suggestion = suggestion_doc.to_dict()
+
+    recipe_id = suggestion.get("recipe_id")
+    if suggestion["source_type"] == "buddy_generated" and not recipe_id:
+        recipe_id = await create_recipe_from_buddy_suggestion(
+            suggestion, scan["confirmed_ingredients"], user["uid"]
+        )
+
+    session = await create_session_record(
+        uid=user["uid"],
+        recipe_id=recipe_id,
+        mode_settings=body.mode_settings or None,
+    )
+
+    return {
+        "recipe_id": recipe_id,
+        "scan_id": scan_id,
+        "suggestion_id": body.suggestion_id,
+        "suggestion": suggestion,
+        "session": {
+            "session_id": session["session_id"],
+            "status": session["status"],
+        },
+        "next": {
+            "endpoint": f"/v1/sessions/{session['session_id']}/activate",
+            "method": "POST",
+            "body": {},
+        },
     }
