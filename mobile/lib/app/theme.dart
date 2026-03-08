@@ -52,7 +52,7 @@ class AppTheme {
         foregroundColor: AppColors.charcoal,
         surfaceTintColor: Colors.transparent,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 1,
         color: Colors.white,
         surfaceTintColor: Colors.transparent,
@@ -140,7 +140,7 @@ class AppTheme {
         foregroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 1,
         color: AppColors.darkCard,
         surfaceTintColor: Colors.transparent,
