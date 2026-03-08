@@ -606,33 +606,9 @@ class TasteCheckTabState extends State<TasteCheckTab> {
             const SizedBox(height: 12),
           ],
 
-          // Diagnostic input
+          // Diagnostic input — quick chips are primary, text is optional fallback
           if (_showDiagnostic) ...[
-            TextField(
-              controller: _descriptionController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: 'How does it taste? (e.g., "it\'s flat", "needs something", "too salty")',
-                labelText: 'Your taste feedback',
-              ),
-              style: const TextStyle(fontSize: 16),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _submitTaste,
-                child: _loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('Get Recommendation', style: TextStyle(fontSize: 16)),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Quick diagnostic buttons
+            // Quick diagnostic buttons (voice-free, tap-based — primary interaction)
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -651,7 +627,40 @@ class TasteCheckTabState extends State<TasteCheckTab> {
                 }),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
+            // Optional text input (hidden behind expansion for voice-first UX)
+            ExpansionTile(
+              title: const Text('Or type your own description'),
+              initiallyExpanded: false,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: TextField(
+                    controller: _descriptionController,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: 'How does it taste? (optional — use chips above or tell your buddy by voice)',
+                      labelText: 'Your taste feedback',
+                    ),
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _loading ? null : _submitTaste,
+                child: _loading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Get Recommendation', style: TextStyle(fontSize: 16)),
+              ),
+            ),
           ],
 
           // Taste result
@@ -794,19 +803,7 @@ class RecoveryTabState extends State<RecoveryTab> {
           ),
           const SizedBox(height: 16),
 
-          // Error description input
-          TextField(
-            controller: _errorController,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              hintText: 'What happened? (e.g., "garlic burnt", "sauce broke", "overcooked")',
-              labelText: 'Describe the issue',
-            ),
-            style: const TextStyle(fontSize: 16),
-          ),
-          const SizedBox(height: 12),
-
-          // Quick error chips
+          // Quick error chips (tap-based, voice-free — primary interaction)
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -826,6 +823,27 @@ class RecoveryTabState extends State<RecoveryTab> {
               _QuickErrorChip(label: 'Stuck to pan', onTap: () {
                 _errorController.text = 'Food stuck to the pan';
               }),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Optional text input (hidden behind expansion for voice-first UX)
+          ExpansionTile(
+            title: const Text('Or describe in your own words'),
+            initiallyExpanded: false,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: TextField(
+                  controller: _errorController,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    hintText: 'What happened? (optional — use chips above or tell your buddy by voice)',
+                    labelText: 'Describe the issue',
+                  ),
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),

@@ -339,8 +339,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
               ),
             ),
 
-            // Degraded mode text input
-            if (_textInputMode || _buddyState == BuddyState.degraded)
+            // Degraded/reconnecting mode text input (voice unavailable fallback)
+            if (_textInputMode || _buddyState == BuddyState.degraded || _buddyState == BuddyState.reconnecting)
               _TextInputBar(
                 controller: _textController,
                 onSend: (text) {
@@ -355,7 +355,10 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
               onVisionCheck: () => context.go(AppRoutes.visionGuidePath(widget.sessionId)),
               onRepeatQuickly: () => _ws.sendVoiceQuery('repeat quickly'),
               onFinish: () => context.go(AppRoutes.postSessionPath(widget.sessionId)),
-              onToggleTextMode: () => setState(() => _textInputMode = !_textInputMode),
+              // Text mode toggle only shown when voice is unavailable
+              onToggleTextMode: (_buddyState == BuddyState.degraded || _buddyState == BuddyState.reconnecting)
+                  ? () => setState(() => _textInputMode = !_textInputMode)
+                  : null,
               textModeActive: _textInputMode,
             ),
           ],

@@ -496,3 +496,56 @@ class TestLiveBrowseVideoChat:
         fallback = bs._fallback_observation()
         # Should suggest verbal or camera alternatives, not typing
         assert "tell me" in fallback["observation"].lower() or "photo" in fallback["question"].lower()
+
+
+class TestTextInputAudit:
+    """Task 9.12 — Retroactive text-input audit and voice/video migration."""
+
+    def test_audit_matrix_exists(self):
+        from app.text_input_audit import TEXT_INPUT_AUDIT
+        assert len(TEXT_INPUT_AUDIT) >= 7
+
+    def test_audit_matrix_validates(self):
+        from app.text_input_audit import validate_audit
+        result = validate_audit()
+        assert result["valid"] is True
+        assert result["total_entries"] >= 7
+
+    def test_all_entries_have_classification(self):
+        from app.text_input_audit import TEXT_INPUT_AUDIT
+        valid = {"Keep", "Replace", "Optional"}
+        for entry in TEXT_INPUT_AUDIT:
+            assert entry["classification"] in valid
+
+    def test_type_instead_classified_as_replace(self):
+        from app.text_input_audit import TEXT_INPUT_AUDIT
+        type_instead = [e for e in TEXT_INPUT_AUDIT if "Type Instead" in e["control"]]
+        assert len(type_instead) == 1
+        assert type_instead[0]["classification"] == "Replace"
+
+    def test_recipe_url_classified_as_keep(self):
+        from app.text_input_audit import TEXT_INPUT_AUDIT
+        url_entries = [e for e in TEXT_INPUT_AUDIT if "URL" in e["control"]]
+        assert len(url_entries) == 1
+        assert url_entries[0]["classification"] == "Keep"
+
+    def test_exceptions_documented_with_rationale(self):
+        from app.text_input_audit import TEXT_INPUT_AUDIT
+        kept = [e for e in TEXT_INPUT_AUDIT if e["classification"] == "Keep"]
+        assert len(kept) >= 3  # URL import, recipe create, ingredient review
+        for e in kept:
+            assert e["rationale"], f"Missing rationale for {e['file']}"
+
+    def test_regression_checklist_exists(self):
+        from app.text_input_audit import VOICE_FIRST_REGRESSION
+        assert len(VOICE_FIRST_REGRESSION) >= 6
+
+    def test_regression_covers_full_session(self):
+        from app.text_input_audit import VOICE_FIRST_REGRESSION
+        text = " ".join(VOICE_FIRST_REGRESSION).lower()
+        assert "cook now" in text
+        assert "freestyle" in text or "voice" in text
+        assert "browse" in text
+        assert "taste" in text
+        assert "recovery" in text or "error" in text
+        assert "type instead" in text
