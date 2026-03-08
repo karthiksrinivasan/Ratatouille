@@ -20,6 +20,8 @@ class FreestyleContext(BaseModel):
 
 class SessionCreate(BaseModel):
     session_mode: str = "recipe_guided"  # recipe_guided | freestyle
+    interaction_mode: str = "voice_video_call"  # voice_video_call | voice_only
+    allow_text_input: bool = False
     recipe_id: Optional[str] = None
     mode_settings: Optional[ModeSettings] = None
     freestyle_context: Optional[FreestyleContext] = None
@@ -31,6 +33,8 @@ class Session(BaseModel):
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     uid: str
     session_mode: str = "recipe_guided"  # recipe_guided | freestyle
+    interaction_mode: str = "voice_video_call"  # voice_video_call | voice_only
+    allow_text_input: bool = False
     recipe_id: Optional[str] = None
     status: str = "created"  # created | active | paused | completed | abandoned
     mode_settings: ModeSettings = Field(default_factory=ModeSettings)

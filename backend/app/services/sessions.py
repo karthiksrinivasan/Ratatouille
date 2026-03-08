@@ -11,6 +11,8 @@ from app.services.firestore import db
 async def create_session_record(
     uid: str,
     session_mode: str = "recipe_guided",
+    interaction_mode: str = "voice_video_call",
+    allow_text_input: bool = False,
     recipe_id: Optional[str] = None,
     mode_settings: Optional[dict] = None,
     freestyle_context: Optional[dict] = None,
@@ -24,6 +26,8 @@ async def create_session_record(
         "session_id": session_id,
         "uid": uid,
         "session_mode": session_mode,
+        "interaction_mode": interaction_mode,
+        "allow_text_input": allow_text_input,
         "recipe_id": recipe_id,
         "status": "created",
         "current_step": 0,

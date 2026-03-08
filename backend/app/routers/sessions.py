@@ -39,6 +39,8 @@ async def create_session(
     session_data = await create_session_record(
         uid=uid,
         session_mode=body.session_mode,
+        interaction_mode=body.interaction_mode,
+        allow_text_input=body.allow_text_input,
         recipe_id=body.recipe_id,
         mode_settings=mode,
         freestyle_context=freestyle_ctx,
@@ -48,6 +50,8 @@ async def create_session(
         "session_id": session_data["session_id"],
         "status": session_data["status"],
         "session_mode": body.session_mode,
+        "interaction_mode": body.interaction_mode,
+        "allow_text_input": body.allow_text_input,
         "recipe_id": body.recipe_id,
         "mode_settings": mode,
     }
@@ -124,10 +128,15 @@ async def complete_session(
     if session["status"] != "active":
         raise HTTPException(400, "Session is not active")
 
-    recipe_doc = await db.collection("recipes").document(session["recipe_id"]).get()
-    recipe = recipe_doc.to_dict()
+    recipe = None
+    recipe_title = "your freestyle creation"
+    if session.get("recipe_id"):
+        recipe_doc = await db.collection("recipes").document(session["recipe_id"]).get()
+        recipe = recipe_doc.to_dict() if recipe_doc.exists else None
+        if recipe:
+            recipe_title = recipe.get("title", recipe_title)
 
-    completion_message = await generate_completion_message(recipe["title"])
+    completion_message = await generate_completion_message(recipe_title)
 
     await db.collection("sessions").document(session_id).update({
         "status": "completed",
@@ -140,7 +149,7 @@ async def complete_session(
         del _guide_generators[session_id]
 
     await log_session_event(session_id, "session_completed", {
-        "recipe_title": recipe["title"],
+        "recipe_title": recipe_title,
     })
 
     return {
