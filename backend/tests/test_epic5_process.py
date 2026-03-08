@@ -1,5 +1,6 @@
 """Tests for Epic 5 — Process Management, Timers & Concurrency."""
 
+import asyncio
 import os
 import json
 import pytest
@@ -248,3 +249,120 @@ class TestProcessManagerTools:
         active = json.loads(get_active_processes(ctx))
         assert len(active) == 1
         assert active[0]["process_id"] == p2["process_id"]
+
+
+# ---------------------------------------------------------------------------
+# 5.2 — Timer System
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestTimerSystem:
+    """Test async timer system for cooking processes."""
+
+    async def test_short_timer_fires_due(self):
+        """Timer <= 2min fires due callback without warning."""
+        from app.services.timers import TimerSystem
+        due_events = []
+        warning_events = []
+
+        async def on_due(pid, name):
+            due_events.append((pid, name))
+
+        async def on_warn(pid, name, remaining):
+            warning_events.append((pid, name, remaining))
+
+        ts = TimerSystem(on_timer_due=on_due, on_timer_warning=on_warn)
+        await ts.start_timer("p1", 0.01, "Quick task")  # 0.6 seconds
+        await asyncio.sleep(1.5)
+
+        assert len(due_events) == 1
+        assert due_events[0] == ("p1", "Quick task")
+        assert len(warning_events) == 0  # no warning for short timer
+
+    async def test_cancel_timer(self):
+        from app.services.timers import TimerSystem
+        due_events = []
+
+        async def on_due(pid, name):
+            due_events.append(pid)
+
+        async def on_warn(pid, name, remaining):
+            pass
+
+        ts = TimerSystem(on_timer_due=on_due, on_timer_warning=on_warn)
+        await ts.start_timer("p1", 0.05, "Cancelled task")
+        assert ts.has_timer("p1")
+
+        ts.cancel_timer("p1")
+        assert not ts.has_timer("p1")
+
+        await asyncio.sleep(4)
+        assert len(due_events) == 0  # never fired
+
+    async def test_cancel_all(self):
+        from app.services.timers import TimerSystem
+
+        async def noop(pid, name):
+            pass
+
+        async def noop_warn(pid, name, remaining):
+            pass
+
+        ts = TimerSystem(on_timer_due=noop, on_timer_warning=noop_warn)
+        await ts.start_timer("p1", 1.0, "A")
+        await ts.start_timer("p2", 1.0, "B")
+        assert ts.active_timer_count() == 2
+
+        ts.cancel_all()
+        assert ts.active_timer_count() == 0
+
+    async def test_multiple_concurrent_timers(self):
+        from app.services.timers import TimerSystem
+        due_events = []
+
+        async def on_due(pid, name):
+            due_events.append(pid)
+
+        async def on_warn(pid, name, remaining):
+            pass
+
+        ts = TimerSystem(on_timer_due=on_due, on_timer_warning=on_warn)
+        await ts.start_timer("p1", 0.01, "A")  # 0.6s
+        await ts.start_timer("p2", 0.02, "B")  # 1.2s
+        assert ts.active_timer_count() == 2
+
+        await asyncio.sleep(2.5)
+        assert len(due_events) == 2
+        assert "p1" in due_events
+        assert "p2" in due_events
+
+    async def test_restart_timer_replaces_existing(self):
+        from app.services.timers import TimerSystem
+        due_events = []
+
+        async def on_due(pid, name):
+            due_events.append(name)
+
+        async def on_warn(pid, name, remaining):
+            pass
+
+        ts = TimerSystem(on_timer_due=on_due, on_timer_warning=on_warn)
+        await ts.start_timer("p1", 10.0, "Old")  # long timer
+        await ts.start_timer("p1", 0.01, "New")   # replaced with short timer
+
+        assert ts.active_timer_count() == 1
+        await asyncio.sleep(1.5)
+        assert due_events == ["New"]
+
+    async def test_cancel_nonexistent_is_safe(self):
+        from app.services.timers import TimerSystem
+
+        async def noop(pid, name):
+            pass
+
+        async def noop_warn(pid, name, remaining):
+            pass
+
+        ts = TimerSystem(on_timer_due=noop, on_timer_warning=noop_warn)
+        ts.cancel_timer("nonexistent")  # should not raise
