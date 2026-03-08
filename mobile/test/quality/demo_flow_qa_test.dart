@@ -42,7 +42,7 @@ void main() {
 
       // Verify primary entry points exist
       expect(find.text('Cook from Fridge or Pantry'), findsOneWidget);
-      expect(find.text('Cook Now'), findsOneWidget);
+      expect(find.text('Cook Now (Seasoned Chef Buddy)'), findsOneWidget);
       expect(find.text('Browse Recipes'), findsOneWidget);
 
       // Verify each card has a subtitle (no blank entry cards)
@@ -51,7 +51,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('No recipe needed — get live AI help instantly'),
+        find.text('No recipe needed — get live voice coaching instantly'),
         findsOneWidget,
       );
 
@@ -69,10 +69,10 @@ void main() {
         ),
       );
 
-      // Core UI elements present
-      expect(find.text('No recipe needed'), findsOneWidget);
-      expect(find.text('Skip & Start Cooking'), findsOneWidget);
-      expect(find.text('Start with Context'), findsOneWidget);
+      // Core UI elements present (call-like UX from task 9.7)
+      expect(find.textContaining('No recipe needed'), findsOneWidget);
+      expect(find.text('Start Cooking'), findsOneWidget);
+      expect(find.text('Add optional context'), findsOneWidget);
 
       // Back button exists (not a dead end)
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
@@ -536,21 +536,18 @@ void main() {
         ),
       );
 
-      // Primary and secondary CTAs are rendered with SizedBox height
-      // (hands-busy 64dp target). Verify they exist and are tappable.
-      final skipButton = find.text('Skip & Start Cooking');
-      expect(skipButton, findsOneWidget);
+      // Primary CTA — Start Cooking button (call-like UX from task 9.7)
+      final startButton = find.text('Start Cooking');
+      expect(startButton, findsOneWidget);
 
-      final contextButton = find.text('Start with Context');
-      expect(contextButton, findsOneWidget);
+      // Camera toggle control
+      expect(find.byIcon(Icons.videocam_off), findsOneWidget);
 
-      // Time option chips are rendered
-      expect(find.text('15 min'), findsOneWidget);
-      expect(find.text('30 min'), findsOneWidget);
-      expect(find.text('1 hour'), findsOneWidget);
+      // Optional context toggle exists
+      expect(find.text('Add optional context'), findsOneWidget);
     });
 
-    testWidgets('Cook Now optional fields have labels', (tester) async {
+    testWidgets('Cook Now optional fields have labels when expanded', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Provider<ApiClient>.value(
@@ -560,19 +557,19 @@ void main() {
         ),
       );
 
-      // All optional fields have label text
+      // Expand optional context section
+      await tester.tap(find.text('Add optional context'));
+      await tester.pumpAndSettle();
+
+      // Optional field visible after expanding
       expect(
         find.text('What are you making? (optional)'),
         findsOneWidget,
       );
-      expect(
-        find.text('Ingredients on hand (optional)'),
-        findsOneWidget,
-      );
-      expect(
-        find.text('How much time? (optional)'),
-        findsOneWidget,
-      );
+
+      // Time option chips are rendered
+      expect(find.text('15 min'), findsOneWidget);
+      expect(find.text('30 min'), findsOneWidget);
     });
   });
 }

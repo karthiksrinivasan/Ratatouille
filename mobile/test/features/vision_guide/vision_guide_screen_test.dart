@@ -140,8 +140,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Good moment to taste'), findsOneWidget);
-      expect(find.text('Your taste feedback'), findsOneWidget);
+      // Quick diagnostic chips are primary (voice-first UX)
       expect(find.text("It's flat"), findsOneWidget);
+      // Text input is behind ExpansionTile — verify the toggle exists
+      expect(find.text('Or type your own description'), findsOneWidget);
     });
   });
 
@@ -154,7 +156,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('Something went wrong'), findsOneWidget);
-      expect(find.text('Describe the issue'), findsOneWidget);
+      // Text input is behind ExpansionTile — verify the toggle exists
+      expect(find.text('Or describe in your own words'), findsOneWidget);
       expect(find.text('Help Me Recover'), findsOneWidget);
     });
 
