@@ -158,18 +158,18 @@ record_completed_tasks() {
     git_log=$(git -C "$PROJECT_ROOT" log --oneline --all 2>/dev/null || true)
 
     {
-        # Match single task: "task N.M"
-        echo "$git_log" | grep -oE "task ${epic_num}\.[0-9]+" | sed "s/task //" || true
+        # Match single task: "task N.M" (excludes plus/range by stripping to first non-digit)
+        echo "$git_log" | grep -oE "tasks? ${epic_num}\.[0-9]+" | sed -E "s/tasks? //" || true
 
-        # Match plus-separated: "tasks N.M+N.P+..."
-        echo "$git_log" | grep -oE "tasks ${epic_num}\.[0-9]+(\+${epic_num}\.[0-9]+)+" | while read -r match; do
-            echo "$match" | sed 's/^tasks //' | tr '+' '\n'
+        # Match plus-separated: "task(s) N.M+N.P+..."
+        echo "$git_log" | grep -oE "tasks? ${epic_num}\.[0-9]+(\+${epic_num}\.[0-9]+)+" | while read -r match; do
+            echo "$match" | sed -E 's/^tasks? //' | tr '+' '\n'
         done || true
 
-        # Match range with regular or em-dash: "tasks N.M-N.P" or "tasks N.M—N.P"
-        echo "$git_log" | grep -oE "tasks ${epic_num}\.[0-9]+[—-]${epic_num}\.[0-9]+" | while read -r match; do
+        # Match range with regular or em-dash: "task(s) N.M-N.P" or "task(s) N.M—N.P"
+        echo "$git_log" | grep -oE "tasks? ${epic_num}\.[0-9]+[—-]${epic_num}\.[0-9]+" | while read -r match; do
             local nums
-            nums=$(echo "$match" | sed 's/^tasks //' | sed "s/${epic_num}\.//g" | sed 's/[—-]/ /')
+            nums=$(echo "$match" | sed -E 's/^tasks? //' | sed "s/${epic_num}\.//g" | sed 's/[—-]/ /')
             local start_num end_num
             start_num=$(echo "$nums" | awk '{print $1}')
             end_num=$(echo "$nums" | awk '{print $2}')
