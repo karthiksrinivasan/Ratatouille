@@ -90,7 +90,7 @@ class TestRecipeCRUD:
 
         mock_query = MagicMock()
         mock_query.stream = _stream
-        mock_firestore.collection.return_value.where.return_value.order_by.return_value = mock_query
+        mock_firestore.collection.return_value.where.return_value = mock_query
 
         resp = client.get("/v1/recipes")
         assert resp.status_code == 200
