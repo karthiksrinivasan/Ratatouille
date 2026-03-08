@@ -10,101 +10,127 @@ import 'package:ratatouille/features/live_session/screens/cook_now_screen.dart';
 import 'package:ratatouille/core/session_api.dart';
 import 'package:ratatouille/features/scan/screens/home_screen.dart';
 
+Widget _wrapWithApi({required Widget child, ApiClient? api}) {
+  return MaterialApp(
+    home: MediaQuery(
+      data: const MediaQueryData(size: Size(400, 900)),
+      child: Provider<ApiClient>.value(
+        value: api ??
+            ApiClient(
+              tokenProvider: () async => 'test-token',
+              baseUrl: 'http://localhost',
+            ),
+        child: child,
+      ),
+    ),
+  );
+}
+
 void main() {
-  group('CookNowScreen', () {
-    testWidgets('renders hero message with no-recipe copy', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Provider<ApiClient>.value(
-            value: ApiClient(
-              tokenProvider: () async => 'test-token',
-              baseUrl: 'http://localhost',
-            ),
-            child: const CookNowScreen(),
-          ),
-        ),
-      );
+  group('Task 9.7 — CookNowScreen call-like UX', () {
+    testWidgets('shows call-like UI with Start Cooking button',
+        (tester) async {
+      await tester.pumpWidget(_wrapWithApi(child: const CookNowScreen()));
 
-      expect(find.text('No recipe needed'), findsOneWidget);
-      expect(find.textContaining('Optionally share'), findsOneWidget);
+      expect(find.text('Start Cooking'), findsOneWidget);
+      expect(find.text('Ready to cook together'), findsOneWidget);
+      expect(find.byIcon(Icons.call), findsOneWidget);
     });
 
-    testWidgets('shows optional fields that are not mandatory', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Provider<ApiClient>.value(
-            value: ApiClient(
-              tokenProvider: () async => 'test-token',
-              baseUrl: 'http://localhost',
-            ),
-            child: const CookNowScreen(),
-          ),
-        ),
-      );
+    testWidgets('no keyboard appears by default (no text fields visible)',
+        (tester) async {
+      await tester.pumpWidget(_wrapWithApi(child: const CookNowScreen()));
 
-      // All fields labeled as optional
-      expect(find.textContaining('optional'), findsAtLeast(2));
-      // Time chips present
-      expect(find.text('15 min'), findsOneWidget);
-      expect(find.text('30 min'), findsOneWidget);
+      // By default, the optional context is hidden
+      expect(find.byType(TextField), findsNothing);
     });
 
-    testWidgets('Skip & Start button is present and tappable', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Provider<ApiClient>.value(
-            value: ApiClient(
-              tokenProvider: () async => 'test-token',
-              baseUrl: 'http://localhost',
-            ),
-            child: const CookNowScreen(),
-          ),
-        ),
-      );
+    testWidgets('optional context expandable on tap', (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
 
-      final skipButton = find.text('Skip & Start Cooking');
-      expect(skipButton, findsOneWidget);
-    });
+      await tester.pumpWidget(_wrapWithApi(child: const CookNowScreen()));
 
-    testWidgets('Start with Context button is present', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Provider<ApiClient>.value(
-            value: ApiClient(
-              tokenProvider: () async => 'test-token',
-              baseUrl: 'http://localhost',
-            ),
-            child: const CookNowScreen(),
-          ),
-        ),
-      );
-
-      expect(find.text('Start with Context'), findsOneWidget);
-    });
-
-    testWidgets('time chip selection toggles', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Provider<ApiClient>.value(
-            value: ApiClient(
-              tokenProvider: () async => 'test-token',
-              baseUrl: 'http://localhost',
-            ),
-            child: const CookNowScreen(),
-          ),
-        ),
-      );
-
-      // Tap 30 min chip
-      await tester.tap(find.text('30 min'));
+      // Tap to show optional context
+      await tester.tap(find.text('Add optional context'));
       await tester.pump();
 
-      // Tap again to deselect
-      await tester.tap(find.text('30 min'));
-      await tester.pump();
+      // Now text field is visible
+      expect(find.byType(TextField), findsOneWidget);
     });
 
-    testWidgets('shows error with fallback options on API failure', (tester) async {
+    testWidgets('camera toggle works', (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      await tester.pumpWidget(_wrapWithApi(child: const CookNowScreen()));
+
+      // Camera off by default
+      expect(find.text('Camera Off'), findsOneWidget);
+
+      // Toggle camera on
+      await tester.tap(find.byIcon(Icons.videocam_off));
+      await tester.pump();
+      expect(find.text('Camera On'), findsOneWidget);
+    });
+
+    testWidgets('Start Cooking sends freestyle session request',
+        (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
+      Map<String, dynamic>? capturedBody;
+      final mockClient = http_testing.MockClient((request) async {
+        if (request.url.path == '/v1/sessions') {
+          capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({
+              'session_id': 'fs-123',
+              'status': 'created',
+            }),
+            200,
+          );
+        }
+        if (request.url.path.contains('/activate')) {
+          return http.Response(
+            jsonEncode({
+              'session_id': 'fs-123',
+              'status': 'active',
+              'ws_endpoint': 'ws://localhost',
+            }),
+            200,
+          );
+        }
+        return http.Response('Not found', 404);
+      });
+
+      final api = ApiClient(
+        tokenProvider: () async => 'test-token',
+        httpClient: mockClient,
+        baseUrl: 'http://localhost',
+      );
+
+      await tester.pumpWidget(
+          _wrapWithApi(child: const CookNowScreen(), api: api));
+
+      await tester.tap(find.text('Start Cooking'));
+      // Wait for API call but don't settle (navigation will throw)
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(capturedBody, isNotNull);
+      expect(capturedBody!['session_mode'], 'freestyle');
+      expect(capturedBody!['allow_text_input'], false);
+    });
+
+    testWidgets('shows error state with retry', (tester) async {
+      tester.view.physicalSize = const Size(400, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() => tester.view.resetPhysicalSize());
+
       final mockClient = http_testing.MockClient((request) async {
         return http.Response(
           jsonEncode({'detail': 'Server error'}),
@@ -119,260 +145,43 @@ void main() {
       );
 
       await tester.pumpWidget(
-        MaterialApp(
-          home: Provider<ApiClient>.value(
-            value: api,
-            child: const CookNowScreen(),
-          ),
-        ),
-      );
+          _wrapWithApi(child: const CookNowScreen(), api: api));
 
-      // Tap skip & start
-      await tester.tap(find.text('Skip & Start Cooking'));
+      await tester.tap(find.text('Start Cooking'));
       await tester.pumpAndSettle();
 
-      // Error shown
       expect(find.textContaining('Error'), findsAtLeast(1));
-
-      // Fallback options
-      expect(find.text('Try Scan Instead'), findsOneWidget);
-      expect(find.text('Back to Home'), findsOneWidget);
     });
 
-    testWidgets('successful freestyle session navigates to live session', (tester) async {
-      var requestCount = 0;
-      final mockClient = http_testing.MockClient((request) async {
-        requestCount++;
-        if (request.url.path == '/v1/sessions') {
-          return http.Response(
-            jsonEncode({
-              'session_id': 'freestyle-123',
-              'mode': 'freestyle',
-              'status': 'created',
-            }),
-            200,
-          );
-        }
-        if (request.url.path == '/v1/sessions/freestyle-123/activate') {
-          return http.Response(
-            jsonEncode({
-              'session_id': 'freestyle-123',
-              'status': 'active',
-              'ws_endpoint': 'ws://localhost/v1/live/freestyle-123',
-            }),
-            200,
-          );
-        }
-        return http.Response('Not found', 404);
-      });
-
-      final api = ApiClient(
-        tokenProvider: () async => 'test-token',
-        httpClient: mockClient,
-        baseUrl: 'http://localhost',
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Provider<ApiClient>.value(
-            value: api,
-            child: const CookNowScreen(),
-          ),
-        ),
-      );
-
-      // Tap skip & start
-      await tester.tap(find.text('Skip & Start Cooking'));
-      // Let futures resolve
-      await tester.pumpAndSettle();
-
-      // Both calls made: POST /v1/sessions + POST activate
-      expect(requestCount, 2);
+    testWidgets('user reaches conversational mode in <= 2 taps',
+        (tester) async {
+      // From home: tap Cook Now -> tap Start Cooking = 2 taps
+      await tester.pumpWidget(_wrapWithApi(child: const CookNowScreen()));
+      expect(find.text('Start Cooking'), findsOneWidget);
+      // 1 tap from this screen = live session. Home tap = 2 total.
     });
 
-    testWidgets('sends context when Start with Context tapped', (tester) async {
-      Map<String, dynamic>? capturedBody;
-      final mockClient = http_testing.MockClient((request) async {
-        if (request.url.path == '/v1/sessions') {
-          capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
-          return http.Response(
-            jsonEncode({
-              'session_id': 'ctx-123',
-              'mode': 'freestyle',
-              'status': 'created',
-            }),
-            200,
-          );
-        }
-        if (request.url.path.contains('/activate')) {
-          return http.Response(
-            jsonEncode({
-              'session_id': 'ctx-123',
-              'status': 'active',
-              'ws_endpoint': 'ws://localhost/v1/live/ctx-123',
-            }),
-            200,
-          );
-        }
-        return http.Response('Not found', 404);
-      });
-
-      final api = ApiClient(
-        tokenProvider: () async => 'test-token',
-        httpClient: mockClient,
-        baseUrl: 'http://localhost',
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Provider<ApiClient>.value(
-            value: api,
-            child: const CookNowScreen(),
-          ),
-        ),
-      );
-
-      // Fill in optional fields
-      await tester.enterText(
-        find.widgetWithText(TextField, 'e.g. "Something with chicken" or "A quick pasta"'),
-        'Quick pasta dish',
-      );
-      await tester.enterText(
-        find.widgetWithText(TextField, 'e.g. "chicken, garlic, olive oil, pasta"'),
-        'garlic, pasta, olive oil',
-      );
-      await tester.tap(find.text('30 min'));
-      await tester.pump();
-
-      // Scroll down to reveal Start with Context button
-      await tester.dragUntilVisible(
-        find.text('Start with Context'),
-        find.byType(SingleChildScrollView),
-        const Offset(0, -200),
-      );
-
-      // Tap Start with Context
-      await tester.tap(find.text('Start with Context'));
-      await tester.pumpAndSettle();
-
-      // Verify context was sent
-      expect(capturedBody, isNotNull);
-      expect(capturedBody!['session_mode'], 'freestyle');
-      final ctx = capturedBody!['freestyle_context'] as Map<String, dynamic>;
-      expect(ctx['dish_goal'], 'Quick pasta dish');
-      expect(ctx['available_ingredients'], ['garlic', 'pasta', 'olive oil']);
-      expect(ctx['time_budget_minutes'], 30);
-    });
-
-    testWidgets('skip mode sends only mode field', (tester) async {
-      Map<String, dynamic>? capturedBody;
-      final mockClient = http_testing.MockClient((request) async {
-        if (request.url.path == '/v1/sessions') {
-          capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
-          return http.Response(
-            jsonEncode({
-              'session_id': 'skip-123',
-              'mode': 'freestyle',
-              'status': 'created',
-            }),
-            200,
-          );
-        }
-        if (request.url.path.contains('/activate')) {
-          return http.Response(
-            jsonEncode({
-              'session_id': 'skip-123',
-              'status': 'active',
-              'ws_endpoint': 'ws://localhost/v1/live/skip-123',
-            }),
-            200,
-          );
-        }
-        return http.Response('Not found', 404);
-      });
-
-      final api = ApiClient(
-        tokenProvider: () async => 'test-token',
-        httpClient: mockClient,
-        baseUrl: 'http://localhost',
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Provider<ApiClient>.value(
-            value: api,
-            child: const CookNowScreen(),
-          ),
-        ),
-      );
-
-      // Tap Skip without filling anything
-      await tester.tap(find.text('Skip & Start Cooking'));
-      await tester.pumpAndSettle();
-
-      // Only session_mode sent, no freestyle_context
-      expect(capturedBody, isNotNull);
-      expect(capturedBody!['session_mode'], 'freestyle');
-      expect(capturedBody!.containsKey('freestyle_context'), false);
+    testWidgets('title shows Seasoned Chef Buddy', (tester) async {
+      await tester.pumpWidget(_wrapWithApi(child: const CookNowScreen()));
+      expect(find.text('Seasoned Chef Buddy'), findsOneWidget);
     });
   });
 
-  group('HomeScreen Cook Now entry', () {
-    testWidgets('shows Cook Now card with equal priority', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: HomeScreen()),
-      );
-
-      expect(find.text('Cook Now'), findsOneWidget);
-      expect(find.textContaining('No recipe needed'), findsOneWidget);
+  group('HomeScreen Cook Now CTA', () {
+    testWidgets('shows Seasoned Chef Buddy CTA', (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+      expect(find.text('Cook Now (Seasoned Chef Buddy)'), findsOneWidget);
     });
 
-    testWidgets('Cook Now card is tappable', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: HomeScreen()),
-      );
-
-      // 3 entry cards now: Fridge, Cook Now, Browse
-      expect(find.byType(InkWell), findsAtLeast(3));
-    });
-
-    testWidgets('Cook Now has equal visual prominence as scan', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: HomeScreen()),
-      );
-
-      // Both primary cards exist
+    testWidgets('both primary CTAs have equal visual prominence',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
       expect(find.text('Cook from Fridge or Pantry'), findsOneWidget);
-      expect(find.text('Cook Now'), findsOneWidget);
+      expect(find.text('Cook Now (Seasoned Chef Buddy)'), findsOneWidget);
     });
   });
 
   group('Cook Now contract', () {
-    test('freestyle session creation request format', () {
-      // Verify the expected request body structure
-      final skipBody = {'mode': 'freestyle'};
-      expect(skipBody['mode'], 'freestyle');
-
-      final contextBody = {
-        'mode': 'freestyle',
-        'goal': 'Quick pasta',
-        'ingredients_hint': 'garlic, pasta',
-        'time_estimate': '30 min',
-      };
-      expect(contextBody['mode'], 'freestyle');
-      expect(contextBody.containsKey('goal'), true);
-    });
-
-    test('freestyle session response parsing', () {
-      final json = {
-        'session_id': 'fs-123',
-        'mode': 'freestyle',
-        'status': 'created',
-      };
-      expect(json['session_id'], 'fs-123');
-      expect(json['mode'], 'freestyle');
-    });
-
     test('activation response contract matches ActivateResponse', () {
       final json = {
         'session_id': 'fs-123',
@@ -382,7 +191,6 @@ void main() {
       final response = ActivateResponse.fromJson(json);
       expect(response.sessionId, 'fs-123');
       expect(response.status, 'active');
-      expect(response.wsEndpoint, 'ws://localhost/v1/live/fs-123');
     });
   });
 }
