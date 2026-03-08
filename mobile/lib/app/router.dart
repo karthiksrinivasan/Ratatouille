@@ -5,6 +5,7 @@ import '../features/recipes/screens/ingredient_checklist_screen.dart';
 import '../features/recipes/screens/recipe_create_screen.dart';
 import '../features/recipes/screens/recipe_detail_screen.dart';
 import '../features/recipes/screens/recipe_list_screen.dart';
+import '../features/scan/screens/home_screen.dart';
 import '../features/scan/screens/scan_screen.dart';
 import '../features/scan/screens/ingredient_review_screen.dart';
 import '../features/suggestions/screens/suggestions_screen.dart';
@@ -16,6 +17,7 @@ import '../features/post_session/screens/post_session_screen.dart';
 class AppRoutes {
   AppRoutes._();
 
+  static const String home = '/';
   static const String scan = '/scan';
   static const String scanReview = '/scan/review';
   static const String scanSuggestions = '/scan/suggestions';
@@ -46,9 +48,16 @@ class AppRoutes {
 
 /// Top-level router configuration for the app.
 final GoRouter appRouter = GoRouter(
-  initialLocation: AppRoutes.recipes,
+  initialLocation: AppRoutes.home,
   debugLogDiagnostics: true,
   routes: [
+    // Home entry screen
+    GoRoute(
+      path: AppRoutes.home,
+      name: 'home',
+      builder: (context, state) => const HomeScreen(),
+    ),
+
     // Scan / pantry capture flow
     GoRoute(
       path: AppRoutes.scan,
