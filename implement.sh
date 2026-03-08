@@ -14,6 +14,7 @@ set -euo pipefail
 #   ./implement.sh --only 2         # Run only epic 2
 #   ./implement.sh --from-task 4.6  # Resume from task 4.6 within epic 4
 #   ./implement.sh --no-parallel    # Force sequential execution
+#   ./implement.sh --test-only      # Run only build/smoke checks, no implementation
 #   ./implement.sh --dry-run        # Show plan without executing
 ###############################################################################
 
@@ -68,6 +69,7 @@ FROM_TASK=""
 ONLY_EPIC=""
 DRY_RUN=false
 NO_PARALLEL=false
+TEST_ONLY=false
 MODEL="opus"
 
 while [[ $# -gt 0 ]]; do
@@ -77,6 +79,7 @@ while [[ $# -gt 0 ]]; do
         --only)         ONLY_EPIC="$2"; shift 2 ;;
         --dry-run)      DRY_RUN=true; shift ;;
         --no-parallel)  NO_PARALLEL=true; shift ;;
+        --test-only) TEST_ONLY=true; shift ;;
         --model)        MODEL="$2"; shift 2 ;;
         --reset)        rm -rf "$STATE_DIR" "$WORKTREE_DIR"; echo "State reset."; exit 0 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -727,7 +730,7 @@ run_epic_pipeline() {
 
     # Check if previously completed but has new tasks
     local has_new=false
-    if is_done "$epic_num" && is_validated "$epic_num"; then
+    if is_done "$epic_num" && is_validated "$epic_num" && ! $TEST_ONLY; then
         if has_new_tasks "$epic_num"; then
             has_new=true
             log "Epic ${epic_num} was completed, but NEW TASKS detected."
@@ -756,6 +759,17 @@ run_epic_pipeline() {
                 log "Detected incomplete tasks — resuming from task ${resume_task}"
             fi
         fi
+    fi
+
+    # Test-only mode: just run build/smoke checks, skip implementation + validation
+    if $TEST_ONLY; then
+        log "Test-only mode — running build/smoke checks for Epic ${epic_num}..."
+        if ! run_build_fix_loop "$epic_num" "test-only"; then
+            log "FAIL: Build/smoke checks failed for Epic ${epic_num}."
+            return 1
+        fi
+        log "Epic ${epic_num} build/smoke checks passed."
+        return 0
     fi
 
     # Phase 1: Implementation
@@ -929,6 +943,7 @@ main() {
     log "Project root: ${PROJECT_ROOT}"
     log "Model: ${MODEL}"
     log "Parallel: $( $NO_PARALLEL && echo 'disabled' || echo 'enabled' )"
+    log "Test only: $( $TEST_ONLY && echo 'yes' || echo 'no' )"
     echo ""
 
     if ! $DRY_RUN; then
