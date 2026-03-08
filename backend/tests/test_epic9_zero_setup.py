@@ -339,3 +339,40 @@ class TestSafetyConstraints:
     def test_freestyle_instruction_includes_safety(self):
         from app.agents.orchestrator import FREESTYLE_INSTRUCTION
         assert "Safety Constraints" in FREESTYLE_INSTRUCTION
+
+
+class TestZeroSetupMetrics:
+    """Task 9.9 — Metrics and judging alignment for zero-setup path."""
+
+    def test_all_funnel_events_registered(self):
+        from app.services.analytics import PRODUCT_EVENTS
+        funnel_events = [
+            "zero_setup_entry_tapped",
+            "zero_setup_session_created",
+            "zero_setup_session_activated",
+            "zero_setup_session_completed",
+        ]
+        for event in funnel_events:
+            assert event in PRODUCT_EVENTS, f"Missing event: {event}"
+
+    def test_metrics_collector_supports_latency(self):
+        from app.services.metrics import MetricsCollector
+        mc = MetricsCollector()
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(
+            mc.record_latency("time_to_first_instruction_ms", 250.0)
+        )
+        summary = mc.get_summary()
+        assert "time_to_first_instruction_ms" in summary
+        assert summary["time_to_first_instruction_ms"]["count"] == 1
+
+    def test_emit_product_event_import(self):
+        from app.services.analytics import emit_product_event
+        assert callable(emit_product_event)
+
+    def test_sessions_router_imports_analytics(self):
+        """Verify session router wires up analytics emission."""
+        import app.routers.sessions as sr
+        # These should be available after import
+        assert hasattr(sr, 'emit_product_event')
+        assert hasattr(sr, 'metrics')

@@ -10,6 +10,8 @@ from app.models.session import FreestyleContext, ModeSettings, SessionCreate
 from app.services.firestore import db
 from app.services.gemini import gemini_client, MODEL_FLASH
 from app.services.sessions import create_session_record, log_session_event
+from app.services.analytics import emit_product_event
+from app.services.metrics import metrics
 
 router = APIRouter()
 
@@ -46,6 +48,13 @@ async def create_session(
         freestyle_context=freestyle_ctx,
     )
 
+    # Emit analytics for zero-setup funnel
+    if body.session_mode == "freestyle":
+        await emit_product_event("zero_setup_session_created", uid, {
+            "session_id": session_data["session_id"],
+            "interaction_mode": body.interaction_mode,
+        })
+
     return {
         "session_id": session_data["session_id"],
         "status": session_data["status"],
@@ -79,7 +88,9 @@ async def activate_session(
         recipe_doc = await db.collection("recipes").document(session["recipe_id"]).get()
         recipe = recipe_doc.to_dict() if recipe_doc.exists else None
 
-    # Freestyle activation: generate initial plan
+    # Freestyle activation: generate initial plan + track metrics
+    import time as _time
+    activation_start = _time.monotonic()
     initial_plan = None
     session_mode = session.get("session_mode", "recipe_guided")
     if session_mode == "freestyle":
@@ -104,6 +115,16 @@ async def activate_session(
     }
     if initial_plan:
         response["initial_plan"] = initial_plan
+
+    # Track metrics for zero-setup funnel
+    if session_mode == "freestyle":
+        time_to_first_ms = (_time.monotonic() - activation_start) * 1000
+        await emit_product_event("zero_setup_session_activated", user["uid"], {
+            "session_id": session_id,
+            "time_to_first_instruction_ms": round(time_to_first_ms, 2),
+        })
+        await metrics.record_latency("time_to_first_instruction_ms", time_to_first_ms)
+
     return response
 
 
