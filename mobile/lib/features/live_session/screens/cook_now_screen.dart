@@ -44,17 +44,25 @@ class _CookNowScreenState extends State<CookNowScreen> {
     try {
       final api = context.read<ApiClient>();
 
-      // Build optional context body
-      final body = <String, dynamic>{
-        'mode': 'freestyle',
-      };
+      // Build request body matching backend SessionCreate contract
+      final freestyleContext = <String, dynamic>{};
       if (!skip) {
         final goal = _goalController.text.trim();
         final ingredients = _ingredientsController.text.trim();
-        if (goal.isNotEmpty) body['goal'] = goal;
-        if (ingredients.isNotEmpty) body['ingredients_hint'] = ingredients;
-        if (_selectedTime != null) body['time_estimate'] = _selectedTime;
+        if (goal.isNotEmpty) freestyleContext['dish_goal'] = goal;
+        if (ingredients.isNotEmpty) {
+          freestyleContext['available_ingredients'] =
+              ingredients.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        }
+        if (_selectedTime != null) {
+          final minutes = _parseTimeMinutes(_selectedTime!);
+          if (minutes != null) freestyleContext['time_budget_minutes'] = minutes;
+        }
       }
+      final body = <String, dynamic>{
+        'session_mode': 'freestyle',
+        if (freestyleContext.isNotEmpty) 'freestyle_context': freestyleContext,
+      };
 
       final data = await api.postWithRetry('/v1/sessions', body: body);
       final sessionId = data['session_id'] as String? ?? '';
@@ -88,6 +96,17 @@ class _CookNowScreenState extends State<CookNowScreen> {
         setState(() => _loading = false);
       }
     }
+  }
+
+  static int? _parseTimeMinutes(String label) {
+    return switch (label) {
+      '15 min' => 15,
+      '30 min' => 30,
+      '45 min' => 45,
+      '1 hour' => 60,
+      '1+ hours' => 90,
+      _ => null,
+    };
   }
 
   void _goToScanFlow() {
