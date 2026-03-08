@@ -12,7 +12,7 @@ from app.auth.firebase import get_current_user
 from app.models.inventory import IngredientConfirmation
 from app.services.firestore import db
 from app.services.gemini import MODEL_FLASH, gemini_client
-from app.services.ingredients import normalize_ingredient
+from app.services.ingredients import match_ingredients, normalize_ingredient
 from app.services.media import extract_keyframes_to_gcs
 from app.services.storage import upload_bytes
 
@@ -214,3 +214,117 @@ async def confirm_ingredients(
         "confirmed_ingredients": confirmed,
         "status": "confirmed",
     }
+
+
+# --- Ranking helpers (FP-06) ---
+
+
+def _difficulty_score(difficulty: str | None, skill_level: str) -> float:
+    order = {"easy": 0, "medium": 1, "hard": 2}
+    d = order.get((difficulty or "medium").lower(), 1)
+    s = order.get((skill_level or "medium").lower(), 1)
+    return max(0.0, 1.0 - (abs(d - s) * 0.5))
+
+
+def _time_score(estimated_time_min: int | None, max_time_minutes: int) -> float:
+    if not estimated_time_min:
+        return 0.7
+    if estimated_time_min <= max_time_minutes:
+        return 1.0
+    over = estimated_time_min - max_time_minutes
+    return max(0.0, 1.0 - (over / max(15, max_time_minutes)))
+
+
+def _rank_score(
+    match_score: float, missing_count: int, t_score: float, s_score: float
+) -> float:
+    missing_penalty = max(0.0, 1.0 - (0.2 * missing_count))
+    return round(
+        (0.50 * match_score)
+        + (0.20 * missing_penalty)
+        + (0.20 * t_score)
+        + (0.10 * s_score),
+        3,
+    )
+
+
+# --- Suggestion engines ---
+
+
+async def find_matching_saved_recipes(
+    uid: str, confirmed_ingredients: list[str]
+) -> list[dict]:
+    """Query user's recipes and rank by ingredient match + time fit + skill fit."""
+    user_doc = await db.collection("users").document(uid).get()
+    profile = user_doc.to_dict() if user_doc.exists else {}
+    prefs = {
+        "max_time_minutes": profile.get("max_time_minutes", 40),
+        "skill_level": profile.get("skill_level", "medium"),
+    }
+
+    query = db.collection("recipes").where("uid", "==", uid)
+    recipes = [doc.to_dict() async for doc in query.stream()]
+
+    suggestions = []
+    for recipe in recipes:
+        result = match_ingredients(
+            confirmed_ingredients, recipe.get("ingredients_normalized", [])
+        )
+
+        if result["match_score"] > 0.3:
+            matched_str = ", ".join(result["matched"][:5])
+            missing_str = (
+                ", ".join(result["missing"][:3]) if result["missing"] else "nothing"
+            )
+            explanation = (
+                f"You have {len(result['matched'])} of "
+                f"{len(recipe.get('ingredients_normalized', []))} "
+                f"ingredients ({matched_str}). "
+                f"{'Only missing ' + missing_str + '.' if result['missing'] else 'You have everything!'}"
+            )
+            grounding_sources = [
+                f"Matched from your confirmed scan: {matched_str}",
+                f"Recipe saved on your account: {recipe['recipe_id']}",
+            ]
+
+            t_score = _time_score(
+                recipe.get("total_time_minutes"), prefs["max_time_minutes"]
+            )
+            s_score = _difficulty_score(recipe.get("difficulty"), prefs["skill_level"])
+
+            suggestions.append(
+                {
+                    "suggestion_id": str(uuid.uuid4()),
+                    "source_type": "saved_recipe",
+                    "recipe_id": recipe["recipe_id"],
+                    "title": recipe["title"],
+                    "description": recipe.get("description"),
+                    "match_score": result["match_score"],
+                    "matched_ingredients": result["matched"],
+                    "missing_ingredients": result["missing"],
+                    "estimated_time_min": recipe.get("total_time_minutes"),
+                    "difficulty": recipe.get("difficulty"),
+                    "cuisine": recipe.get("cuisine"),
+                    "source_label": "Saved",
+                    "explanation": explanation,
+                    "grounding_sources": grounding_sources,
+                    "assumptions": [],
+                    "time_fit": t_score,
+                    "skill_fit": s_score,
+                    "ranking_score": _rank_score(
+                        result["match_score"],
+                        len(result["missing"]),
+                        t_score,
+                        s_score,
+                    ),
+                }
+            )
+
+    suggestions.sort(
+        key=lambda s: (
+            -s["ranking_score"],
+            -s["match_score"],
+            len(s["missing_ingredients"]),
+        )
+    )
+    return suggestions[:5]
