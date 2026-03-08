@@ -96,6 +96,7 @@ Epic 1: Infrastructure & Platform Foundation
 ```
 
 **Critical path:** Epic 1 → Epic 2 → Epic 4 → Epic 8 → Epic 9 → Epic 7
+**Execution order note:** Epic 9 is completed before Epic 7.
 
 **Parallel tracks** (after Epic 2):
 - Track A: Epic 3 (recipe/scan/suggestion pipeline)
@@ -129,9 +130,9 @@ Required UX deliverables across epics:
 | 4 | [Live Cooking Session & Voice Loop](./epic-4-live-session.md) | 11 | Epic 1, Epic 2 | Engineer A + C |
 | 5 | [Process Management, Timers & Concurrency](./epic-5-process-timers.md) | 8 | Epic 4 | Engineer A + C |
 | 6 | [Vision, Visual Guides, Taste & Recovery](./epic-6-vision-taste-recovery.md) | 10 | Epic 4 | Engineer A + C |
-| 7 | [Post-Session, Observability & Demo](./epic-7-post-session-demo.md) | 12 | All epics | All engineers |
 | 8 | [Mobile App Foundation & UX Integration](./epic-8-mobile-app-foundation.md) | 15 | Epic 1 (start), integrates Epic 2-6 | Engineer A (Mobile Lead) + support |
 | 9 | [Zero-Setup \"Seasoned Chef Buddy\" Mode](./epic-9-zero-setup-chef-buddy.md) | 10 | Epic 4, Epic 8 | Engineer A + C + B |
+| 7 | [Post-Session, Observability & Demo](./epic-7-post-session-demo.md) | 12 | All epics (including Epic 9) | All engineers |
 
 ---
 
