@@ -380,150 +380,77 @@ run_build_fix_loop() {
 build_context() {
     local epic_num=$1
     local resume_task="${2:-}"
+    local epic_filename
+    epic_filename=$(get_epic_filename "$epic_num")
 
-    cat <<'CONTEXT_HEADER'
-You are implementing a hackathon project called "Ratatouille" — a live cooking companion app.
-You are working in a repository that has the full PRD, tech guide, and epic specifications.
-The CLAUDE.md file in the project root has all conventions — you have already loaded it.
+    # --- Inline the epic spec so Claude doesn't need to read it ---
+    local epic_content=""
+    if [[ -n "$epic_filename" && -f "${WORK_DIR}/epics/${epic_filename}" ]]; then
+        epic_content=$(cat "${WORK_DIR}/epics/${epic_filename}")
+    fi
 
-KEY RULES:
-1. Read the epic file AND the referenced PRD/tech guide sections before writing any code.
-2. Implement ALL tasks in the epic sequentially — do NOT skip any task.
-3. Use subagents (the Agent tool) to parallelize independent tasks within the epic.
-4. After implementing each task, verify its acceptance criteria.
-5. Write clean, production-quality code — not throwaway hackathon code.
-6. Follow the project conventions in CLAUDE.md (async everywhere, Pydantic models, etc.)
-7. Do NOT modify files from previous epics unless the current epic explicitly requires it (e.g., mounting a new router).
-8. If a task requires infrastructure setup (GCP commands), create the code artifacts but note that GCP commands should be run separately.
+    # --- Snapshot current project tree (depth-limited) ---
+    local tree_snapshot=""
+    tree_snapshot=$(cd "$WORK_DIR" && find backend mobile -maxdepth 4 -not -path '*/__pycache__/*' -not -path '*/.dart_tool/*' -not -path '*/build/*' -not -path '*/.epic-venv/*' -not -path '*/.venv/*' -not -path '*/node_modules/*' 2>/dev/null | sort || echo "(no backend/ or mobile/ yet)")
 
-MOBILE / FLUTTER TASKS — DO NOT SKIP:
-Some epics include "Mobile UX Implementation" tasks. You MUST implement these.
-- If the mobile/ directory does not exist yet, scaffold a new Flutter project:
-    cd mobile && flutter create --org com.ratatouille --project-name ratatouille .
-  Then build out the screens/widgets required by the task.
-- If the mobile/ directory already exists, add to the existing Flutter project.
-- Mobile UX is a first-class, judging-critical deliverable — not optional polish.
-- Follow Flutter best practices: use provider or riverpod for state, material3 theme,
-  responsive layouts, and clear separation of screens/widgets/services.
-- The mobile app should connect to the backend API endpoints you have already built.
-- Use environment config for the backend URL (do not hardcode localhost).
-- Every mobile task gets its own commit just like backend tasks.
+    # --- Recent git log for context on what's been built ---
+    local recent_commits=""
+    recent_commits=$(cd "$WORK_DIR" && git log --oneline -30 2>/dev/null || echo "(no commits yet)")
 
-TESTING — REQUIRED FOR EVERY TASK:
-You MUST write and run tests for each task as part of the implementation. Tests are not optional.
-Follow this testing strategy:
+    cat <<CONTEXT_HEADER
+You are implementing Epic ${epic_num} of "Ratatouille" — a live cooking companion app.
+CLAUDE.md is auto-loaded with all project conventions. Do NOT re-read it.
 
-Backend (Python / FastAPI):
-- Place tests in backend/tests/ mirroring the app structure:
-    backend/tests/test_routers/test_recipes.py
-    backend/tests/test_services/test_ingredients.py
-    backend/tests/test_agents/test_orchestrator.py
-    backend/tests/test_models/test_recipe.py
-- Use pytest + httpx.AsyncClient for endpoint tests (with TestClient from FastAPI).
-- Mock external dependencies (Firestore, GCS, Gemini, Firebase Auth) using unittest.mock or pytest-mock.
-  Do NOT make real calls to GCP services in tests.
-- For auth-protected endpoints, create a fixture that overrides the get_current_user dependency.
-- Write at minimum for each task:
-  * Unit tests: test individual functions, model validation, edge cases
-  * Integration tests: test endpoint request/response with mocked dependencies
-- After writing tests, RUN THEM: cd backend && python -m pytest tests/ -v
-- If any test fails, fix the code or test until all pass.
-- Include pytest, httpx, and pytest-asyncio in requirements.txt (add them if missing).
-- Ensure backend/tests/__init__.py and all test subdirectory __init__.py files exist.
+=== EPIC ${epic_num} SPECIFICATION (ALREADY LOADED — do NOT re-read the file) ===
+${epic_content}
 
-Flutter (Mobile):
-- Place tests in mobile/test/ mirroring the lib structure.
-- Write widget tests for key screens/components.
-- After writing tests, RUN THEM: cd mobile && flutter test
-- If any test fails, fix it.
+=== CURRENT PROJECT TREE ===
+${tree_snapshot}
 
-Test files are committed as part of the same task commit — not in a separate commit.
-Example: task 2.1 creates app/routers/recipes.py AND tests/test_routers/test_recipes.py,
-both committed together as "feat(epic-2): task 2.1 — recipe CRUD endpoints".
-
-GIT COMMIT WORKFLOW — THIS IS CRITICAL:
-You MUST create a git commit after completing EACH individual task in the epic.
-Follow this exact workflow for every task:
-
-  1. Implement task N.M
-  2. Verify its acceptance criteria
-  3. Stage ONLY the files you created/modified for this task:
-       git add <specific files>
-  4. Commit with a conventional commit message following this format:
-       feat(epic-N): task N.M — <short description>
-     Example:
-       feat(epic-2): task 2.1 — recipe CRUD endpoints
-       feat(epic-2): task 2.2 — technique tag extraction via Gemini
-  5. Move on to the next task
-
-DO NOT batch multiple tasks into a single commit.
-DO NOT use "git add -A" or "git add ." — always add specific files.
-DO NOT skip commits — every task gets its own commit.
-If a task modifies an existing file from a previous task in the same epic, that is fine — commit the updated file.
-
-At the end of the epic, after all tasks are committed, create one final commit for any remaining cleanup:
-  chore(epic-N): final cleanup and wiring
+=== RECENT COMMITS (what's already built) ===
+${recent_commits}
 
 CONTEXT_HEADER
 
-    echo ""
-    echo "=== EPIC TO IMPLEMENT ==="
-    echo "You are implementing Epic ${epic_num}."
-    echo "Read the file: epics/$(get_epic_filename "$epic_num")"
-    echo ""
-    echo "=== AVAILABLE REFERENCE FILES ==="
-    echo "- epics/index.md (architecture overview, conventions, project structure)"
-    echo "- RATATOUILLE_HACKATHON_PRD.md (product requirements)"
-    echo "- GOOGLE_CLOUD_TECH_GUIDE.md (implementation patterns)"
-    echo ""
-
     if [[ -n "$resume_task" ]]; then
         echo "=== RESUME POINT ==="
-        echo "Tasks already completed in this epic (DO NOT re-implement these):"
+        echo "Tasks already completed (DO NOT re-implement):"
         local completed
         completed=$(get_completed_tasks "$epic_num")
         if [[ -n "$completed" ]]; then
             echo "$completed" | while read -r t; do echo "  - Task $t (DONE)"; done
         fi
-        echo ""
-        echo "START from task ${resume_task}. Skip all tasks before it."
-        echo "Read the existing code from earlier tasks to understand the current state."
+        echo "START from task ${resume_task}. Skip all prior tasks."
         echo ""
     fi
 
-    if [[ $epic_num -gt 1 ]]; then
-        echo "=== PREVIOUSLY COMPLETED EPICS ==="
-        for prev in $(seq 1 $((epic_num - 1))); do
-            local prev_file
-            prev_file=$(get_epic_filename "$prev" 2>/dev/null || true)
-            if [[ -n "$prev_file" ]]; then
-                echo "- Epic ${prev}: epics/${prev_file} (COMPLETED — read if you need context on what was built)"
-            fi
-        done
-        echo ""
-        echo "IMPORTANT: Before starting, read the existing codebase to understand what's already been built."
-        echo "Use the Agent tool or Glob/Grep to explore the current project structure."
-        echo ""
-    fi
+    cat <<'RULES'
+=== RULES ===
+1. Do NOT read files you don't need. The epic spec and project tree are above. Only read files you need to edit or understand imports.
+2. Implement ALL tasks sequentially. Do NOT skip any — including Mobile/Flutter tasks.
+3. Use subagents (Agent tool) to parallelize independent sub-work within a task.
+4. After each task: write tests, run them, fix failures, then commit.
+5. Do NOT modify files from previous epics unless this epic explicitly requires it.
+6. GCP infra commands = create code artifacts only; note infra is provisioned separately.
 
-    echo "=== INSTRUCTIONS ==="
-    echo "1. Start by reading epics/$(get_epic_filename "$epic_num") thoroughly."
-    echo "2. Read epics/index.md for conventions and project structure."
-    echo "3. Read relevant sections of RATATOUILLE_HACKATHON_PRD.md and GOOGLE_CLOUD_TECH_GUIDE.md as referenced in the epic."
-    echo "4. Explore the existing codebase to understand what's already built."
-    echo "5. For EACH task in the epic:"
-    echo "   a. Implement the task (use subagents for independent sub-work if helpful)."
-    echo "   b. Write tests for the task (unit + integration as described in TESTING section)."
-    echo "   c. Run the tests: cd backend && python -m pytest tests/ -v"
-    echo "   d. Fix any test failures — do not move on with failing tests."
-    echo "   e. Verify acceptance criteria."
-    echo "   f. Stage implementation + test files and commit: feat(epic-${epic_num}): task N.M — description"
-    echo "6. After all tasks, run the FULL test suite one final time: cd backend && python -m pytest tests/ -v"
-    echo "7. If anything fails, fix it and do a final cleanup commit."
-    echo ""
-    echo "REMEMBER: One commit per task. Do not batch. Do not skip commits."
-    echo ""
-    echo "BEGIN IMPLEMENTATION OF EPIC ${epic_num} NOW."
+MOBILE / FLUTTER TASKS — DO NOT SKIP:
+- If mobile/ doesn't exist: cd mobile && flutter create --org com.ratatouille --project-name ratatouille .
+- If it exists: add to it. Mobile UX is judging-critical, not optional.
+- Use provider/riverpod, material3 theme, env config for backend URL.
+
+TESTING — REQUIRED PER TASK:
+Backend: pytest + httpx in backend/tests/. Mock Firestore/GCS/Gemini/Auth. Run: cd backend && python -m pytest tests/ -v
+Flutter: widget tests in mobile/test/. Run: cd mobile && flutter test
+Tests go in the SAME commit as the implementation.
+
+GIT — ONE COMMIT PER TASK:
+  git add <specific files>   # NEVER git add -A or git add .
+  git commit -m "feat(epic-N): task N.M — short description"
+After all tasks: chore(epic-N): final cleanup and wiring
+
+=== GO ===
+Start coding immediately. Do NOT spend time exploring or reading files unnecessarily — the context above is sufficient to begin.
+RULES
 }
 
 ###############################################################################
@@ -532,92 +459,56 @@ CONTEXT_HEADER
 
 build_validation_prompt() {
     local epic_num=$1
+    local epic_filename
+    epic_filename=$(get_epic_filename "$epic_num")
+
+    # Inline the epic spec
+    local epic_content=""
+    if [[ -n "$epic_filename" && -f "${WORK_DIR}/epics/${epic_filename}" ]]; then
+        epic_content=$(cat "${WORK_DIR}/epics/${epic_filename}")
+    fi
+
+    # Project tree snapshot
+    local tree_snapshot=""
+    tree_snapshot=$(cd "$WORK_DIR" && find backend mobile -maxdepth 4 -not -path '*/__pycache__/*' -not -path '*/.dart_tool/*' -not -path '*/build/*' -not -path '*/.epic-venv/*' -not -path '*/.venv/*' 2>/dev/null | sort || echo "(no backend/ or mobile/ yet)")
+
+    # Commits for this epic
+    local epic_commits=""
+    epic_commits=$(cd "$WORK_DIR" && git log --oneline --grep="epic-${epic_num}" 2>/dev/null || echo "(none)")
 
     cat <<VALIDATION_PROMPT
-You are a code reviewer AND fixer validating Epic ${epic_num} for the Ratatouille hackathon project.
-Your job is NOT just to report issues — you MUST fix every issue you find.
+You are a fast validation agent for Epic ${epic_num} of Ratatouille.
+CLAUDE.md is auto-loaded. Do NOT re-read it or index.md.
 
-PHASE 1 — AUDIT:
-1. Read the epic specification: epics/$(get_epic_filename "$epic_num")
-2. Read the project conventions: CLAUDE.md and epics/index.md
-3. Explore the codebase to find all files created/modified for this epic.
-4. Check EVERY acceptance criterion in the epic against the actual implementation.
-5. Check for:
-   - Missing files or endpoints
-   - Incorrect imports or broken references
-   - Missing error handling
-   - Deviations from the specified data models
-   - Security issues (missing auth, exposed secrets)
-   - Convention violations (sync instead of async, missing Pydantic models, etc.)
-   - Missing __init__.py files
-   - Async Gemini calls (must use gemini_client.aio or asyncio.to_thread)
-   - SKIPPED TASKS — especially "Mobile UX Implementation" tasks. Every task in the
-     epic MUST be implemented. If a mobile task was skipped, implement it now.
+=== EPIC ${epic_num} SPEC (ALREADY LOADED) ===
+${epic_content}
 
-PHASE 2 — SMOKE TEST + TEST SUITE:
-Step A — Import check:
+=== CURRENT PROJECT TREE ===
+${tree_snapshot}
+
+=== COMMITS FOR THIS EPIC ===
+${epic_commits}
+
+=== YOUR JOB: TEST → FIX → DONE ===
+Be fast. Do NOT re-read files unnecessarily. The spec and tree are above.
+
+STEP 1 — Run tests immediately:
   cd backend && python3 -c "from app.main import app; print('Import OK')"
-If this fails, FIX it immediately (missing __init__.py, circular imports, etc.).
-
-Step B — Module imports (test each module added by this epic):
-  python3 -c "from app.routers.X import router"
-  python3 -c "from app.models.X import SomeModel"
-  python3 -c "from app.services.X import something"
-  python3 -c "from app.agents.X import SomeAgent"
-
-Step C — Run the full test suite:
   cd backend && python -m pytest tests/ -v
-If tests fail:
-  - Determine if the test or the implementation is wrong.
-  - Fix whichever is incorrect.
-  - Re-run until all tests pass.
-If NO tests exist for this epic's tasks, WRITE THEM before proceeding. Every task
-should have corresponding tests in backend/tests/. Missing test coverage is a validation failure.
+  cd mobile && flutter test  (if mobile/ exists)
 
-Step D — Flutter tests (if mobile/ exists):
-  cd mobile && flutter test
-Fix any failures.
+STEP 2 — If anything fails, fix it. Only read files directly related to the failure.
 
-PHASE 3 — FIX EVERYTHING:
-This is the most important phase. For EVERY issue found in Phase 1 and Phase 2:
-  1. Fix it using the Edit tool (or Write tool if a file is missing entirely).
-  2. Re-run the relevant smoke test to confirm the fix works.
-  3. Continue to the next issue.
+STEP 3 — Quick check: scan the spec above for any obviously skipped tasks (especially Mobile UX tasks).
+Only read source files if a task appears completely missing from the tree.
 
-Do NOT just list issues and move on. Do NOT produce a report without fixing.
-You are the last line of defense before the next epic builds on top of this one.
+STEP 4 — If you fixed anything:
+  git add <specific files>
+  git commit -m "fix(epic-${epic_num}): address validation findings"
 
-After all fixes are applied:
-  - Re-run the full smoke test: cd backend && python3 -c "from app.main import app; print('Import OK')"
-  - Stage all fixed files (specific files only, not git add -A)
-  - Commit: fix(epic-${epic_num}): address validation findings
-  - If there were no issues, do not create an empty commit.
+STEP 5 — Brief summary: PASS/FAIL, what you fixed (if anything). Keep it short.
 
-PHASE 4 — REPORT:
-After fixing, produce a final structured report:
-
-## Epic ${epic_num} Validation Report
-
-### Status: PASS | FAIL | PARTIAL
-
-### Smoke Test: PASS | FAIL
-(include the actual output from AFTER fixes)
-
-### Test Suite: X passed, Y failed, Z missing
-(include the pytest output summary line)
-(list any tasks that have NO test coverage)
-- [ ] Task X.Y: description — PASS/FAIL (details)
-
-### Issues Found and Fixed:
-1. [SEVERITY] Description of issue + file:line — FIXED / UNABLE TO FIX (reason)
-
-### Remaining Issues (if any):
-- Only list things you genuinely could not fix
-
-### Commit Verification:
-Run "git log --oneline" and verify there is a separate commit for each task in this epic.
-Expected pattern: "feat(epic-${epic_num}): task N.M — ..."
-If tasks were batched into a single commit, note this but do not rewrite history.
+START NOW. Run the tests first.
 VALIDATION_PROMPT
 }
 
