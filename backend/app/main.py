@@ -109,8 +109,9 @@ from app.routers import inventory
 
 app.include_router(inventory.router, prefix="/v1", tags=["inventory"])
 
-from app.routers import sessions, live, vision
+from app.routers import sessions, live, vision, users
 
 app.include_router(sessions.router, prefix="/v1", tags=["sessions"])
 app.include_router(live.router, prefix="/v1", tags=["live"])
 app.include_router(vision.router, prefix="/v1", tags=["vision"])
+app.include_router(users.router, prefix="/v1", tags=["users"])

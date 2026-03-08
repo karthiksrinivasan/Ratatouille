@@ -22,6 +22,15 @@ class AuthService extends ChangeNotifier {
   /// Whether a user is currently signed in.
   bool get isSignedIn => currentUser != null;
 
+  /// Whether the current user is anonymous (guest).
+  bool get isAnonymous => currentUser?.isAnonymous ?? true;
+
+  /// Display name of the current user.
+  String? get displayName => currentUser?.displayName;
+
+  /// Email of the current user.
+  String? get email => currentUser?.email;
+
   /// Stream of auth state changes.
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
@@ -73,6 +82,58 @@ class AuthService extends ChangeNotifier {
     final credential = await _auth.signInAnonymously();
     notifyListeners();
     return credential;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Account linking (anonymous → permanent)
+  // ---------------------------------------------------------------------------
+
+  /// Link the current anonymous account to email/password credentials.
+  /// Preserves the existing UID so all Firestore data stays associated.
+  Future<UserCredential> linkEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    final user = currentUser;
+    if (user == null) throw FirebaseAuthException(code: 'no-user', message: 'No user signed in');
+    final credential = EmailAuthProvider.credential(email: email, password: password);
+    final result = await user.linkWithCredential(credential);
+    notifyListeners();
+    return result;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Password reset
+  // ---------------------------------------------------------------------------
+
+  /// Send a password reset email.
+  Future<void> sendPasswordResetEmail(String email) async {
+    await _auth.sendPasswordResetEmail(email: email);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Profile updates
+  // ---------------------------------------------------------------------------
+
+  /// Update the current user's display name.
+  Future<void> updateDisplayName(String name) async {
+    final user = currentUser;
+    if (user == null) return;
+    await user.updateDisplayName(name);
+    await user.reload();
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Account deletion
+  // ---------------------------------------------------------------------------
+
+  /// Delete the current user's account.
+  Future<void> deleteAccount() async {
+    final user = currentUser;
+    if (user == null) return;
+    await user.delete();
+    notifyListeners();
   }
 
   // ---------------------------------------------------------------------------

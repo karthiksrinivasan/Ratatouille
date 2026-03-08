@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/auth_service.dart';
+import '../features/auth/screens/forgot_password_screen.dart';
+import '../features/auth/screens/login_screen.dart';
+import '../features/auth/screens/profile_screen.dart';
+import '../features/auth/screens/signup_screen.dart';
 import '../features/recipes/screens/ingredient_checklist_screen.dart';
 import '../features/recipes/screens/recipe_create_screen.dart';
 import '../features/recipes/screens/recipe_detail_screen.dart';
@@ -19,6 +24,13 @@ import '../features/post_session/screens/post_session_screen.dart';
 class AppRoutes {
   AppRoutes._();
 
+  // Auth routes
+  static const String login = '/login';
+  static const String signup = '/signup';
+  static const String forgotPassword = '/forgot-password';
+  static const String profile = '/profile';
+
+  // App routes
   static const String home = '/';
   static const String scan = '/scan';
   static const String scanReview = '/scan/review';
@@ -51,155 +63,204 @@ class AppRoutes {
   static String postSessionPath(String id) => '/post-session/$id';
 }
 
-/// Top-level router configuration for the app.
-final GoRouter appRouter = GoRouter(
-  initialLocation: AppRoutes.home,
-  debugLogDiagnostics: true,
-  routes: [
-    // Home entry screen
-    GoRoute(
-      path: AppRoutes.home,
-      name: 'home',
-      builder: (context, state) => const HomeScreen(),
-    ),
+/// Routes that don't require any authentication.
+const _publicRoutes = {
+  AppRoutes.login,
+  AppRoutes.signup,
+  AppRoutes.forgotPassword,
+};
 
-    // Scan / pantry capture flow
-    GoRoute(
-      path: AppRoutes.scan,
-      name: 'scan',
-      builder: (context, state) => const ScanScreen(),
-    ),
+/// Create the app router with auth-aware redirects.
+GoRouter createRouter(AuthService authService) {
+  return GoRouter(
+    initialLocation: AppRoutes.home,
+    debugLogDiagnostics: true,
+    refreshListenable: authService,
+    redirect: (context, state) {
+      final isSignedIn = authService.isSignedIn;
+      final currentPath = state.matchedLocation;
+      final isPublicRoute = _publicRoutes.contains(currentPath);
 
-    // Ingredient review (after detection)
-    GoRoute(
-      path: AppRoutes.scanReview,
-      name: 'scanReview',
-      builder: (context, state) => const IngredientReviewScreen(),
-    ),
+      // Not signed in at all — redirect to login (unless already on a public route).
+      if (!isSignedIn && !isPublicRoute) {
+        return AppRoutes.login;
+      }
 
-    // Suggestions from scan (dual-lane)
-    GoRoute(
-      path: AppRoutes.scanSuggestions,
-      name: 'scanSuggestions',
-      builder: (context, state) => const SuggestionsScreen(),
-    ),
+      // Signed in but on login/signup — redirect to home.
+      if (isSignedIn && isPublicRoute) {
+        return AppRoutes.home;
+      }
 
-    // Recipe library
-    GoRoute(
-      path: AppRoutes.recipes,
-      name: 'recipes',
-      builder: (context, state) => const RecipeListScreen(),
-    ),
+      return null; // No redirect.
+    },
+    routes: [
+      // Auth routes
+      GoRoute(
+        path: AppRoutes.login,
+        name: 'login',
+        builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.signup,
+        name: 'signup',
+        builder: (context, state) => const SignupScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.forgotPassword,
+        name: 'forgotPassword',
+        builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.profile,
+        name: 'profile',
+        builder: (context, state) => const ProfileScreen(),
+      ),
 
-    // Create recipe (must be before :id to avoid conflict)
-    GoRoute(
-      path: AppRoutes.recipeCreate,
-      name: 'recipeCreate',
-      builder: (context, state) => const RecipeCreateScreen(),
-    ),
+      // Home entry screen
+      GoRoute(
+        path: AppRoutes.home,
+        name: 'home',
+        builder: (context, state) => const HomeScreen(),
+      ),
 
-    // Recipe detail
-    GoRoute(
-      path: AppRoutes.recipeDetail,
-      name: 'recipeDetail',
-      builder: (context, state) {
-        final id = state.pathParameters['id']!;
-        return RecipeDetailScreen(recipeId: id);
-      },
-    ),
+      // Scan / pantry capture flow
+      GoRoute(
+        path: AppRoutes.scan,
+        name: 'scan',
+        builder: (context, state) => const ScanScreen(),
+      ),
 
-    // Ingredient checklist gate
-    GoRoute(
-      path: AppRoutes.ingredientChecklist,
-      name: 'ingredientChecklist',
-      builder: (context, state) {
-        final id = state.pathParameters['id']!;
-        return IngredientChecklistScreen(recipeId: id);
-      },
-    ),
+      // Ingredient review (after detection)
+      GoRoute(
+        path: AppRoutes.scanReview,
+        name: 'scanReview',
+        builder: (context, state) => const IngredientReviewScreen(),
+      ),
 
-    // Cook Now — zero-setup freestyle entry
-    GoRoute(
-      path: AppRoutes.cookNow,
-      name: 'cookNow',
-      builder: (context, state) => const CookNowScreen(),
-    ),
+      // Suggestions from scan (dual-lane)
+      GoRoute(
+        path: AppRoutes.scanSuggestions,
+        name: 'scanSuggestions',
+        builder: (context, state) => const SuggestionsScreen(),
+      ),
 
-    // Recipe suggestions (dual-lane)
-    GoRoute(
-      path: AppRoutes.suggestions,
-      name: 'suggestions',
-      builder: (context, state) => const SuggestionsScreen(),
-    ),
+      // Recipe library
+      GoRoute(
+        path: AppRoutes.recipes,
+        name: 'recipes',
+        builder: (context, state) => const RecipeListScreen(),
+      ),
 
-    // Session setup (before live session)
-    GoRoute(
-      path: AppRoutes.sessionSetup,
-      name: 'sessionSetup',
-      builder: (context, state) {
-        final id = state.pathParameters['id']!;
-        final title = state.uri.queryParameters['title'];
-        return SessionSetupScreen(sessionId: id, recipeTitle: title);
-      },
-    ),
+      // Create recipe (must be before :id to avoid conflict)
+      GoRoute(
+        path: AppRoutes.recipeCreate,
+        name: 'recipeCreate',
+        builder: (context, state) => const RecipeCreateScreen(),
+      ),
 
-    // Live cooking session
-    GoRoute(
-      path: AppRoutes.session,
-      name: 'session',
-      builder: (context, state) {
-        final id = state.pathParameters['id']!;
-        return LiveSessionScreen(sessionId: id);
-      },
-    ),
+      // Recipe detail
+      GoRoute(
+        path: AppRoutes.recipeDetail,
+        name: 'recipeDetail',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return RecipeDetailScreen(recipeId: id);
+        },
+      ),
 
-    // Side-by-side visual guide
-    GoRoute(
-      path: AppRoutes.visionGuide,
-      name: 'visionGuide',
-      builder: (context, state) {
-        final id = state.pathParameters['id']!;
-        return VisionGuideScreen(sessionId: id);
-      },
-    ),
+      // Ingredient checklist gate
+      GoRoute(
+        path: AppRoutes.ingredientChecklist,
+        name: 'ingredientChecklist',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return IngredientChecklistScreen(recipeId: id);
+        },
+      ),
 
-    // Post-session completion
-    GoRoute(
-      path: AppRoutes.postSession,
-      name: 'postSession',
-      builder: (context, state) {
-        final id = state.pathParameters['id']!;
-        return PostSessionScreen(sessionId: id);
-      },
-    ),
-  ],
-  errorBuilder: (context, state) => Scaffold(
-    body: Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.error_outline,
-            size: 64,
-            color: Theme.of(context).colorScheme.error,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Page not found',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            state.uri.toString(),
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () => context.go(AppRoutes.recipes),
-            child: const Text('Go Home'),
-          ),
-        ],
+      // Cook Now — zero-setup freestyle entry
+      GoRoute(
+        path: AppRoutes.cookNow,
+        name: 'cookNow',
+        builder: (context, state) => const CookNowScreen(),
+      ),
+
+      // Recipe suggestions (dual-lane)
+      GoRoute(
+        path: AppRoutes.suggestions,
+        name: 'suggestions',
+        builder: (context, state) => const SuggestionsScreen(),
+      ),
+
+      // Session setup (before live session)
+      GoRoute(
+        path: AppRoutes.sessionSetup,
+        name: 'sessionSetup',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          final title = state.uri.queryParameters['title'];
+          return SessionSetupScreen(sessionId: id, recipeTitle: title);
+        },
+      ),
+
+      // Live cooking session
+      GoRoute(
+        path: AppRoutes.session,
+        name: 'session',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return LiveSessionScreen(sessionId: id);
+        },
+      ),
+
+      // Side-by-side visual guide
+      GoRoute(
+        path: AppRoutes.visionGuide,
+        name: 'visionGuide',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return VisionGuideScreen(sessionId: id);
+        },
+      ),
+
+      // Post-session completion
+      GoRoute(
+        path: AppRoutes.postSession,
+        name: 'postSession',
+        builder: (context, state) {
+          final id = state.pathParameters['id']!;
+          return PostSessionScreen(sessionId: id);
+        },
+      ),
+    ],
+    errorBuilder: (context, state) => Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Page not found',
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              state.uri.toString(),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => context.go(AppRoutes.home),
+              child: const Text('Go Home'),
+            ),
+          ],
+        ),
       ),
     ),
-  ),
-);
+  );
+}

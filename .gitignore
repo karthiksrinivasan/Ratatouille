@@ -3,4 +3,9 @@
 .epic-venv/
 .epic-worktrees/
 .env
+.env.*
 .venv/
+
+# Firebase / GCP credentials
+**/google-services.json
+**/GoogleService-Info.plist

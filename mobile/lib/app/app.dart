@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
-import 'router.dart';
 import 'theme.dart';
 
 class RatatouilleApp extends StatelessWidget {
-  const RatatouilleApp({super.key});
+  final GoRouter router;
+
+  const RatatouilleApp({super.key, required this.router});
 
   @override
   Widget build(BuildContext context) {
@@ -14,7 +16,7 @@ class RatatouilleApp extends StatelessWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,
-      routerConfig: appRouter,
+      routerConfig: router,
     );
   }
 }

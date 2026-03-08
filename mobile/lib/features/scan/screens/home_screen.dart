@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../app/router.dart';
+import '../../../core/auth_service.dart';
 import '../../../shared/design_tokens.dart';
 
 /// Home entry screen — the starting point for the cooking journey.
@@ -14,16 +16,47 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final auth = context.watch<AuthService>();
 
     return Scaffold(
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
+            // Profile button in top-right
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  top: Spacing.sm,
+                  right: Spacing.pagePadding,
+                ),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: GestureDetector(
+                    onTap: () => context.go(AppRoutes.profile),
+                    child: Chip(
+                      avatar: Icon(
+                        auth.isAnonymous
+                            ? Icons.person_outline
+                            : Icons.person,
+                        size: 18,
+                      ),
+                      label: Text(
+                        auth.isAnonymous
+                            ? 'Guest'
+                            : (auth.displayName ?? auth.email ?? 'Account'),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
             SliverPadding(
               padding: const EdgeInsets.all(Spacing.pagePadding),
               sliver: SliverList(
                 delegate: SliverChildListDelegate([
-                  const SizedBox(height: Spacing.xl),
+                  const SizedBox(height: Spacing.md),
 
                   // App title
                   Text(
