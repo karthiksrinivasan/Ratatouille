@@ -1,12 +1,17 @@
 """Inventory scan & recipe suggestion endpoints (Epic 3)."""
 
+import json
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from google.cloud import firestore
+from google.genai import types
 
 from app.auth.firebase import get_current_user
 from app.services.firestore import db
+from app.services.gemini import MODEL_FLASH, gemini_client
+from app.services.ingredients import normalize_ingredient
 from app.services.media import extract_keyframes_to_gcs
 from app.services.storage import upload_bytes
 
@@ -80,4 +85,99 @@ async def create_inventory_scan(
         "capture_mode": capture_mode,
         "image_count": len(image_uris),
         "status": "pending",
+    }
+
+
+async def extract_ingredients_from_images(
+    image_uris: list[str], source: str
+) -> list[dict]:
+    """Use Gemini Flash to detect ingredients from fridge/pantry images."""
+    parts = []
+    for uri in image_uris:
+        parts.append(types.Part.from_uri(file_uri=uri, mime_type="image/jpeg"))
+
+    parts.append(
+        f"""Analyze these {source} images and identify all visible food ingredients.
+
+For each ingredient, provide:
+- name: common ingredient name (e.g., "red bell pepper", "whole milk", "cheddar cheese")
+- confidence: float 0.0-1.0 indicating how certain you are of the identification
+- source_image_index: which image (0-indexed) the ingredient is most visible in
+
+Rules:
+- Only identify actual food ingredients, not containers, utensils, or non-food items
+- If an item is partially obscured, lower the confidence
+- If you can see a label, use the label name
+- Provide confidence >= 0.8 only when clearly visible and identifiable
+- Provide confidence 0.5-0.79 when partially visible or ambiguous
+- Provide confidence < 0.5 when guessing from context
+
+Return ONLY a JSON array of objects with the fields above."""
+    )
+
+    response = await gemini_client.aio.models.generate_content(
+        model=MODEL_FLASH,
+        contents=parts,
+    )
+
+    try:
+        ingredients = json.loads(response.text)
+    except json.JSONDecodeError:
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", response.text)
+        if match:
+            ingredients = json.loads(match.group(1))
+        else:
+            return []
+
+    return ingredients
+
+
+@router.post("/inventory-scans/{scan_id}/detect")
+async def detect_ingredients(
+    scan_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Process uploaded images through Gemini Flash to detect ingredients."""
+    doc = await db.collection("inventory_scans").document(scan_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Scan not found")
+    scan = doc.to_dict()
+    if scan["uid"] != user["uid"]:
+        raise HTTPException(403, "Not your scan")
+
+    raw_ingredients = await extract_ingredients_from_images(
+        scan["image_uris"], scan["source"]
+    )
+
+    detected = []
+    confidence_map = {}
+    for item in raw_ingredients:
+        name = item.get("name", "")
+        norm = normalize_ingredient(name)
+        confidence = min(max(item.get("confidence", 0.5), 0.0), 1.0)
+        detected.append(
+            {
+                "name": name,
+                "name_normalized": norm,
+                "confidence": confidence,
+                "source_image_index": item.get("source_image_index", 0),
+            }
+        )
+        confidence_map[norm] = confidence
+
+    detected.sort(key=lambda x: x["confidence"], reverse=True)
+
+    await db.collection("inventory_scans").document(scan_id).update(
+        {
+            "detected_ingredients": detected,
+            "confidence_map": confidence_map,
+            "status": "detected",
+        }
+    )
+
+    return {
+        "scan_id": scan_id,
+        "detected_ingredients": detected,
+        "status": "detected",
+        "low_confidence_count": sum(1 for d in detected if d["confidence"] < 0.5),
     }
