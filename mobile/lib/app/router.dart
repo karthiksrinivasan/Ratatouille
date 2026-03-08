@@ -6,6 +6,7 @@ import '../features/recipes/screens/recipe_create_screen.dart';
 import '../features/recipes/screens/recipe_detail_screen.dart';
 import '../features/recipes/screens/recipe_list_screen.dart';
 import '../features/scan/screens/scan_screen.dart';
+import '../features/scan/screens/ingredient_review_screen.dart';
 import '../features/suggestions/screens/suggestions_screen.dart';
 import '../features/live_session/screens/live_session_screen.dart';
 import '../features/vision_guide/screens/vision_guide_screen.dart';
@@ -16,6 +17,8 @@ class AppRoutes {
   AppRoutes._();
 
   static const String scan = '/scan';
+  static const String scanReview = '/scan/review';
+  static const String scanSuggestions = '/scan/suggestions';
   static const String recipes = '/recipes';
   static const String recipeDetail = '/recipes/:id';
   static const String recipeCreate = '/recipes/create';
@@ -51,6 +54,20 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.scan,
       name: 'scan',
       builder: (context, state) => const ScanScreen(),
+    ),
+
+    // Ingredient review (after detection)
+    GoRoute(
+      path: AppRoutes.scanReview,
+      name: 'scanReview',
+      builder: (context, state) => const IngredientReviewScreen(),
+    ),
+
+    // Suggestions from scan (dual-lane)
+    GoRoute(
+      path: AppRoutes.scanSuggestions,
+      name: 'scanSuggestions',
+      builder: (context, state) => const SuggestionsScreen(),
     ),
 
     // Recipe library

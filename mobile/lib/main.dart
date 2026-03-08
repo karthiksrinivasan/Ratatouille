@@ -8,6 +8,7 @@ import 'core/env_config.dart';
 import 'core/api_client.dart';
 import 'core/auth_service.dart';
 import 'features/recipes/providers/recipe_provider.dart';
+import 'features/scan/providers/scan_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,6 +37,12 @@ Future<void> main() async {
         Provider<ApiClient>.value(value: apiClient),
         ChangeNotifierProvider<RecipeProvider>(
           create: (_) => RecipeProvider(apiClient: apiClient),
+        ),
+        ChangeNotifierProvider<ScanProvider>(
+          create: (_) => ScanProvider(
+            apiClient: apiClient,
+            authService: authService,
+          ),
         ),
       ],
       child: const RatatouilleApp(),
