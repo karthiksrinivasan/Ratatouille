@@ -19,7 +19,7 @@ void main() {
     });
 
     test('tier returns high for >= 0.8', () {
-      final ing = DetectedIngredient(
+      const ing = DetectedIngredient(
         name: 'Egg',
         nameNormalized: 'egg',
         confidence: 0.85,
@@ -28,7 +28,7 @@ void main() {
     });
 
     test('tier returns medium for 0.5 - 0.79', () {
-      final ing = DetectedIngredient(
+      const ing = DetectedIngredient(
         name: 'Cheese',
         nameNormalized: 'cheese',
         confidence: 0.65,
@@ -37,7 +37,7 @@ void main() {
     });
 
     test('tier returns low for < 0.5', () {
-      final ing = DetectedIngredient(
+      const ing = DetectedIngredient(
         name: 'Mystery item',
         nameNormalized: 'mystery item',
         confidence: 0.3,

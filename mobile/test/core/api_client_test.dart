@@ -43,7 +43,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        tokenProvider: tokenProvider,
+        tokenProvider: tokenProvider.call,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -70,7 +70,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        tokenProvider: tokenProvider,
+        tokenProvider: tokenProvider.call,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -94,7 +94,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        tokenProvider: tokenProvider,
+        tokenProvider: tokenProvider.call,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -122,7 +122,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        tokenProvider: tokenProvider,
+        tokenProvider: tokenProvider.call,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -147,7 +147,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        tokenProvider: noTokenProvider,
+        tokenProvider: noTokenProvider.call,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -165,7 +165,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        tokenProvider: tokenProvider,
+        tokenProvider: tokenProvider.call,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -183,7 +183,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        tokenProvider: tokenProvider,
+        tokenProvider: tokenProvider.call,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );
@@ -205,7 +205,7 @@ void main() {
       });
 
       final apiClient = ApiClient(
-        tokenProvider: tokenProvider,
+        tokenProvider: tokenProvider.call,
         httpClient: mockClient,
         baseUrl: 'https://api.test.com',
       );

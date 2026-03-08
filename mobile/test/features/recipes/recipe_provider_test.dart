@@ -152,10 +152,10 @@ void main() {
       await provider.loadRecipes();
       expect(provider.recipes.length, 0);
 
-      final recipe = await provider.createRecipe(RecipeCreateRequest(
+      final recipe = await provider.createRecipe(const RecipeCreateRequest(
         title: 'New',
-        ingredients: [const Ingredient(name: 'Salt')],
-        steps: [const RecipeStep(stepNumber: 1, instruction: 'Do it')],
+        ingredients: [Ingredient(name: 'Salt')],
+        steps: [RecipeStep(stepNumber: 1, instruction: 'Do it')],
       ));
 
       expect(recipe, isNotNull);

@@ -146,10 +146,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       ),
     );
 
-    if (confirmed == true && mounted) {
-      final ok =
-          await context.read<RecipeProvider>().deleteRecipe(widget.recipeId);
-      if (ok && mounted) {
+    if (confirmed == true && context.mounted) {
+      final provider = context.read<RecipeProvider>();
+      final ok = await provider.deleteRecipe(widget.recipeId);
+      if (ok && context.mounted) {
         context.go(AppRoutes.recipes);
       }
     }

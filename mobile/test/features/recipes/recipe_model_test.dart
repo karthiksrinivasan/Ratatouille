@@ -149,39 +149,39 @@ void main() {
 
   group('RecipeCreateRequest', () {
     test('validate returns null for valid request', () {
-      final request = RecipeCreateRequest(
+      const request = RecipeCreateRequest(
         title: 'Test Recipe',
-        ingredients: [const Ingredient(name: 'Salt')],
-        steps: [const RecipeStep(stepNumber: 1, instruction: 'Do stuff')],
+        ingredients: [Ingredient(name: 'Salt')],
+        steps: [RecipeStep(stepNumber: 1, instruction: 'Do stuff')],
       );
 
       expect(request.validate(), isNull);
     });
 
     test('validate returns error for empty title', () {
-      final request = RecipeCreateRequest(
+      const request = RecipeCreateRequest(
         title: '',
-        ingredients: [const Ingredient(name: 'Salt')],
-        steps: [const RecipeStep(stepNumber: 1, instruction: 'Do stuff')],
+        ingredients: [Ingredient(name: 'Salt')],
+        steps: [RecipeStep(stepNumber: 1, instruction: 'Do stuff')],
       );
 
       expect(request.validate(), 'Title is required');
     });
 
     test('validate returns error for no ingredients', () {
-      final request = RecipeCreateRequest(
+      const request = RecipeCreateRequest(
         title: 'Test',
         ingredients: [],
-        steps: [const RecipeStep(stepNumber: 1, instruction: 'Do stuff')],
+        steps: [RecipeStep(stepNumber: 1, instruction: 'Do stuff')],
       );
 
       expect(request.validate(), 'At least one ingredient is required');
     });
 
     test('validate returns error for no steps', () {
-      final request = RecipeCreateRequest(
+      const request = RecipeCreateRequest(
         title: 'Test',
-        ingredients: [const Ingredient(name: 'Salt')],
+        ingredients: [Ingredient(name: 'Salt')],
         steps: [],
       );
 
@@ -189,35 +189,35 @@ void main() {
     });
 
     test('validate returns error for empty ingredient name', () {
-      final request = RecipeCreateRequest(
+      const request = RecipeCreateRequest(
         title: 'Test',
-        ingredients: [const Ingredient(name: '')],
-        steps: [const RecipeStep(stepNumber: 1, instruction: 'Do stuff')],
+        ingredients: [Ingredient(name: '')],
+        steps: [RecipeStep(stepNumber: 1, instruction: 'Do stuff')],
       );
 
       expect(request.validate(), 'Ingredient 1 needs a name');
     });
 
     test('validate returns error for empty step instruction', () {
-      final request = RecipeCreateRequest(
+      const request = RecipeCreateRequest(
         title: 'Test',
-        ingredients: [const Ingredient(name: 'Salt')],
-        steps: [const RecipeStep(stepNumber: 1, instruction: '')],
+        ingredients: [Ingredient(name: 'Salt')],
+        steps: [RecipeStep(stepNumber: 1, instruction: '')],
       );
 
       expect(request.validate(), 'Step 1 needs an instruction');
     });
 
     test('toJson includes all fields', () {
-      final request = RecipeCreateRequest(
+      const request = RecipeCreateRequest(
         title: 'Test',
         description: 'A test recipe',
         servings: 4,
         totalTimeMinutes: 30,
         difficulty: 'easy',
         cuisine: 'Italian',
-        ingredients: [const Ingredient(name: 'Salt', nameNormalized: 'salt')],
-        steps: [const RecipeStep(stepNumber: 1, instruction: 'Season')],
+        ingredients: [Ingredient(name: 'Salt', nameNormalized: 'salt')],
+        steps: [RecipeStep(stepNumber: 1, instruction: 'Season')],
       );
 
       final json = request.toJson();

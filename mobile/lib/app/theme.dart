@@ -45,7 +45,7 @@ class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor: AppColors.cream,
       textTheme: _buildTextTheme(colorScheme),
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         centerTitle: true,
         elevation: 0,
         backgroundColor: AppColors.cream,
@@ -133,7 +133,7 @@ class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor: AppColors.darkSurface,
       textTheme: _buildTextTheme(colorScheme),
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         centerTitle: true,
         elevation: 0,
         backgroundColor: AppColors.darkSurface,

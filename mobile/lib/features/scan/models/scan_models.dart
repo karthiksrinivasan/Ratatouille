@@ -1,4 +1,5 @@
 /// Dart models mirroring the backend inventory Pydantic schemas.
+library;
 
 /// A single ingredient detected from fridge/pantry images.
 class DetectedIngredient {

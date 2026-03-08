@@ -60,13 +60,13 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
               padding: const EdgeInsets.only(bottom: 80),
               children: [
                 if (provider.userRecipes.isNotEmpty) ...[
-                  _SectionHeader(title: 'Your Recipes'),
+                  const _SectionHeader(title: 'Your Recipes'),
                   ...provider.userRecipes.map(
                     (r) => _RecipeCard(recipe: r),
                   ),
                 ],
                 if (provider.demoRecipes.isNotEmpty) ...[
-                  _SectionHeader(title: 'Demo'),
+                  const _SectionHeader(title: 'Demo'),
                   ...provider.demoRecipes.map(
                     (r) => _RecipeCard(recipe: r),
                   ),

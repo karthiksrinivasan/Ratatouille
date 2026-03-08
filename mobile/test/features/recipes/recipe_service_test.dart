@@ -84,10 +84,10 @@ void main() {
       final api = createApi(mockClient);
       final service = RecipeService(api: api);
 
-      final recipe = await service.createRecipe(RecipeCreateRequest(
+      final recipe = await service.createRecipe(const RecipeCreateRequest(
         title: 'New Recipe',
-        ingredients: [const Ingredient(name: 'Salt', nameNormalized: 'salt')],
-        steps: [const RecipeStep(stepNumber: 1, instruction: 'Season')],
+        ingredients: [Ingredient(name: 'Salt', nameNormalized: 'salt')],
+        steps: [RecipeStep(stepNumber: 1, instruction: 'Season')],
       ));
 
       expect(recipe.recipeId, 'new-r1');

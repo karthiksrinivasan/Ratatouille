@@ -1,4 +1,5 @@
 /// Dart models mirroring the backend Recipe Pydantic schemas.
+library;
 
 class Ingredient {
   final String name;

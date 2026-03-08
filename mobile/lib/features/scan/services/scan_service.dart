@@ -28,7 +28,7 @@ class ScanService {
 
     // Auth header.
     if (_authService != null) {
-      final token = await _authService!.getIdToken();
+      final token = await _authService.getIdToken();
       if (token != null) {
         request.headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
       }

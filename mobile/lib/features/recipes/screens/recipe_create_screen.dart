@@ -102,7 +102,7 @@ class _RecipeCreateScreenState extends State<RecipeCreateScreen> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _difficulty,
+                    initialValue: _difficulty,
                     decoration: const InputDecoration(labelText: 'Difficulty'),
                     items: ['easy', 'medium', 'hard']
                         .map((d) => DropdownMenuItem(

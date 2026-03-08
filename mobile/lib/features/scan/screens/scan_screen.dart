@@ -162,7 +162,7 @@ class _ScanScreenState extends State<ScanScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("What are you scanning?",
+            Text('What are you scanning?',
                 style: theme.textTheme.titleSmall),
             const SizedBox(height: 12),
             SegmentedButton<String>(
