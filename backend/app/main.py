@@ -22,7 +22,9 @@ async def health():
 
 
 # Router mounts (added as epics are completed)
-# from app.routers import recipes, inventory, sessions, live
-# app.include_router(recipes.router, prefix="/v1", tags=["recipes"])
+from app.routers import recipes
+
+app.include_router(recipes.router, prefix="/v1", tags=["recipes"])
+# from app.routers import inventory, sessions, live
 # app.include_router(inventory.router, prefix="/v1", tags=["inventory"])
 # app.include_router(sessions.router, prefix="/v1", tags=["sessions"])
