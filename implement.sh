@@ -143,7 +143,9 @@ record_completed_tasks() {
     local epic_num=$1
     local task_file
     task_file=$(TASK_STATE_FILE "$epic_num")
-    git -C "$WORK_DIR" log --oneline --all | grep -oE "task ${epic_num}\.[0-9]+" | sed "s/task //" | sort -t. -k2 -n | uniq > "$task_file" 2>/dev/null || true
+    # Use --all to see commits across all branches (important for worktrees).
+    # Use PROJECT_ROOT git dir so we always see the full history.
+    git -C "$PROJECT_ROOT" log --oneline --all | grep -oE "task ${epic_num}\.[0-9]+" | sed "s/task //" | sort -t. -k2 -n | uniq > "$task_file" 2>/dev/null || true
     local count
     count=$(wc -l < "$task_file" 2>/dev/null | tr -d ' ')
     log "Recorded ${count} completed task(s) for Epic ${epic_num}"
@@ -796,6 +798,12 @@ create_worktree() {
     local worktree_path="${WORKTREE_DIR}/${track_name}"
 
     mkdir -p "$WORKTREE_DIR"
+
+    if $DRY_RUN; then
+        log "[DRY RUN] Would create worktree at ${worktree_path} (branch: ${branch_name})"
+        echo "$PROJECT_ROOT"  # Use main dir for dry run
+        return 0
+    fi
 
     log "Creating worktree for track '${track_name}' at ${worktree_path}..."
     git worktree add "$worktree_path" -b "$branch_name" 2>&1
