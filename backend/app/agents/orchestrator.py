@@ -9,6 +9,7 @@ from google.adk.tools import FunctionTool, ToolContext
 from app.services.gemini import MODEL_FLASH
 from app.agents.voice_modes import VoiceModeManager
 from app.agents.calibration import CalibrationEngine
+from app.agents.degradation import DegradationManager
 
 
 def get_current_step(tool_context: ToolContext) -> str:
@@ -59,6 +60,7 @@ class SessionOrchestrator:
             self.calibration = CalibrationEngine.from_dict(cal_data)
         else:
             self.calibration = CalibrationEngine()
+        self.degradation = DegradationManager()
 
     async def handle_voice_query(self, text: str) -> dict:
         """Handle an active voice query from the user."""
@@ -148,6 +150,14 @@ class SessionOrchestrator:
 
     async def handle_vision_check(self, frame_uri: Optional[str]) -> dict:
         """Handle vision check — routed to VisionAssessor (Epic 6)."""
+        if not self.degradation.vision_available:
+            step_data = self._get_current_step_data() or {}
+            return {
+                "type": "vision_result",
+                "confidence": "unavailable",
+                "assessment": self.degradation.get_vision_fallback_text(step_data),
+            }
+        # Vision assessor will be implemented in Epic 6
         return {
             "type": "vision_result",
             "confidence": "pending",
