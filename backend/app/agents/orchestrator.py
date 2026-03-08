@@ -8,6 +8,7 @@ from google.adk.tools import FunctionTool, ToolContext
 
 from app.services.gemini import MODEL_FLASH
 from app.agents.voice_modes import VoiceModeManager
+from app.agents.calibration import CalibrationEngine
 
 
 def get_current_step(tool_context: ToolContext) -> str:
@@ -52,11 +53,35 @@ class SessionOrchestrator:
         self.state = session_state
         self.voice_mode = VoiceModeManager()
         self.voice_mode.ambient_enabled = session_state.get("ambient_listen", False)
+        # Restore calibration from session state or create new
+        cal_data = session_state.get("calibration_state")
+        if cal_data and isinstance(cal_data, dict) and cal_data.get("global_level"):
+            self.calibration = CalibrationEngine.from_dict(cal_data)
+        else:
+            self.calibration = CalibrationEngine()
 
     async def handle_voice_query(self, text: str) -> dict:
         """Handle an active voice query from the user."""
         from google.adk.runners import InMemoryRunner
         from google.genai import types
+
+        # Detect and process calibration signals
+        signal = self.calibration.detect_signal_from_text(text)
+        if signal:
+            current_step_data = self._get_current_step_data()
+            technique = None
+            if current_step_data:
+                tags = current_step_data.get("technique_tags", [])
+                technique = tags[0] if tags else None
+            self.calibration.process_signal(signal, technique)
+
+        # Update calibration level in state for agent instruction templating
+        self.state["calibration_level"] = self.calibration.get_level()
+
+        # Check for critical moment override (CA-04)
+        current_step_data = self._get_current_step_data()
+        if current_step_data and self.calibration.is_critical_moment(current_step_data):
+            self.state["calibration_level"] = "detailed"
 
         runner = InMemoryRunner(agent=self.agent, app_name="ratatouille")
         session = await runner.session_service.create_session(
@@ -83,6 +108,15 @@ class SessionOrchestrator:
             "text": response_text or "I'm here — what do you need?",
             "current_step": self.state.get("current_step", 1),
         }
+
+    def _get_current_step_data(self) -> Optional[dict]:
+        """Get the current step dict from recipe."""
+        recipe = self.state.get("recipe", {})
+        steps = recipe.get("steps", [])
+        current = self.state.get("current_step", 1)
+        if 0 < current <= len(steps):
+            return steps[current - 1]
+        return None
 
     async def handle_audio_chunk(self, audio_base64: Optional[str]) -> Optional[dict]:
         """Handle raw audio chunk — delegates to Gemini Live (Epic 4.5)."""
