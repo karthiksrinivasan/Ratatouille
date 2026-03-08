@@ -22,6 +22,10 @@ class WsClient extends ChangeNotifier {
   StreamSubscription? _subscription;
   WsConnectionState _state = WsConnectionState.disconnected;
   String? _lastError;
+  String? _currentSessionId;
+  int _reconnectAttempts = 0;
+  Timer? _reconnectTimer;
+  static const int _maxReconnectAttempts = 5;
 
   /// Controller that broadcasts incoming messages to listeners.
   final StreamController<Map<String, dynamic>> _messageController =
@@ -63,12 +67,14 @@ class WsClient extends ChangeNotifier {
         throw Exception('User is not authenticated');
       }
 
-      final uri = Uri.parse('$_baseWsUrl/ws/session/$sessionId?token=$token');
+      final uri = Uri.parse('$_baseWsUrl/v1/live/$sessionId?token=$token');
       _channel = WebSocketChannel.connect(uri);
 
       // Wait for the connection to be ready.
       await _channel!.ready;
 
+      _currentSessionId = sessionId;
+      _reconnectAttempts = 0;
       _setState(WsConnectionState.connected);
 
       _subscription = _channel!.stream.listen(
@@ -79,11 +85,15 @@ class WsClient extends ChangeNotifier {
     } catch (e) {
       _lastError = e.toString();
       _setState(WsConnectionState.error);
+      _scheduleReconnect();
     }
   }
 
   /// Close the current WebSocket connection.
   Future<void> disconnect() async {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _currentSessionId = null;
     await _subscription?.cancel();
     _subscription = null;
     await _channel?.sink.close();
@@ -103,14 +113,44 @@ class WsClient extends ChangeNotifier {
     _channel!.sink.add(jsonEncode(message));
   }
 
-  /// Send a text-only chat message.
-  void sendText(String text) {
-    send({'type': 'text', 'content': text});
+  /// Send a voice query (active query — VM-02).
+  void sendVoiceQuery(String text) {
+    send({'type': 'voice_query', 'text': text});
   }
 
-  /// Send an audio chunk (base64-encoded).
+  /// Send an audio chunk (base64-encoded PCM — VM-01/VM-02).
   void sendAudio(String base64Audio) {
-    send({'type': 'audio', 'content': base64Audio});
+    send({'type': 'voice_audio', 'audio': base64Audio});
+  }
+
+  /// Send step-complete event.
+  void sendStepComplete(int step) {
+    send({'type': 'step_complete', 'step': step});
+  }
+
+  /// Send ambient toggle event.
+  void sendAmbientToggle(bool enabled) {
+    send({'type': 'ambient_toggle', 'enabled': enabled});
+  }
+
+  /// Send barge-in event.
+  void sendBargeIn(String text) {
+    send({'type': 'barge_in', 'text': text});
+  }
+
+  /// Send resume-interrupted request.
+  void sendResumeInterrupted() {
+    send({'type': 'resume_interrupted'});
+  }
+
+  /// Send vision check with frame URI.
+  void sendVisionCheck(String frameUri) {
+    send({'type': 'vision_check', 'frame_uri': frameUri});
+  }
+
+  /// Send a ping to keep the connection alive.
+  void sendPing() {
+    send({'type': 'ping'});
   }
 
   // ---------------------------------------------------------------------------
@@ -133,6 +173,29 @@ class WsClient extends ChangeNotifier {
 
   void _onDone() {
     _setState(WsConnectionState.disconnected);
+    _scheduleReconnect();
+  }
+
+  /// Schedule a reconnect with exponential backoff.
+  void _scheduleReconnect() {
+    if (_currentSessionId == null ||
+        _reconnectAttempts >= _maxReconnectAttempts) {
+      return;
+    }
+    _reconnectAttempts++;
+    final delay = Duration(
+      milliseconds: 500 * (1 << (_reconnectAttempts - 1)), // 500ms, 1s, 2s, 4s, 8s
+    );
+    debugPrint('WsClient: reconnecting in ${delay.inMilliseconds}ms '
+        '(attempt $_reconnectAttempts/$_maxReconnectAttempts)');
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, () {
+      final sessionId = _currentSessionId;
+      if (sessionId != null) {
+        _state = WsConnectionState.disconnected; // Allow connect()
+        connect(sessionId);
+      }
+    });
   }
 
   void _setState(WsConnectionState newState) {
@@ -144,6 +207,7 @@ class WsClient extends ChangeNotifier {
 
   @override
   void dispose() {
+    _reconnectTimer?.cancel();
     disconnect();
     _messageController.close();
     super.dispose();

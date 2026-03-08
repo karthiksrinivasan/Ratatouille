@@ -800,13 +800,13 @@ create_worktree() {
     mkdir -p "$WORKTREE_DIR"
 
     if $DRY_RUN; then
-        log "[DRY RUN] Would create worktree at ${worktree_path} (branch: ${branch_name})"
+        log "[DRY RUN] Would create worktree at ${worktree_path} (branch: ${branch_name})" >&2
         echo "$PROJECT_ROOT"  # Use main dir for dry run
         return 0
     fi
 
-    log "Creating worktree for track '${track_name}' at ${worktree_path}..."
-    git worktree add "$worktree_path" -b "$branch_name" 2>&1
+    log "Creating worktree for track '${track_name}' at ${worktree_path}..." >&2
+    git worktree add "$worktree_path" -b "$branch_name" >&2 2>&1
     echo "$worktree_path"
 }
 
@@ -827,9 +827,7 @@ merge_worktree() {
     current_branch=$(git branch --show-current)
 
     log "Merging track '${track_name}' (branch: ${branch_name}) into ${current_branch}..."
-    git merge "$branch_name" --no-edit -m "merge: track ${track_name} into ${current_branch}" 2>&1
-
-    if [[ $? -ne 0 ]]; then
+    if ! git merge "$branch_name" --no-edit -m "merge: track ${track_name} into ${current_branch}" 2>&1; then
         log "ERROR: Merge conflict merging track '${track_name}'!"
         log "Resolve conflicts manually, then continue with: ./implement.sh --from 8"
         return 1
