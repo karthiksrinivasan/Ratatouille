@@ -1,6 +1,6 @@
 import time
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 import firebase_admin
 
@@ -51,6 +51,19 @@ firebase_admin.initialize_app(options=_firebase_opts)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# Internal metrics endpoint (admin only)
+from app.auth.firebase import require_admin
+from app.services.metrics import metrics
+
+
+@app.get("/internal/metrics", dependencies=[Depends(require_admin)])
+async def get_metrics():
+    """Return in-memory metrics summary. Admin-only, disabled in production unless explicitly enabled."""
+    if settings.environment == "production" and not settings.enable_internal_metrics:
+        raise HTTPException(404, "Not found")
+    return metrics.get_summary()
 
 
 # Router mounts (added as epics are completed)

@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 from firebase_admin import auth
 
 from app.config import settings
@@ -37,3 +37,14 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> dict:
         raise HTTPException(status_code=401, detail="Token expired")
     except Exception:
         raise HTTPException(status_code=401, detail="Authentication failed")
+
+
+async def require_admin(user: dict = Depends(get_current_user)) -> dict:
+    """Require the user to be an admin."""
+    from app.config import settings
+    admin_uids = [u.strip() for u in settings.admin_uids.split(",") if u.strip()]
+    if settings.environment == "development":
+        return user
+    if user["uid"] not in admin_uids:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
