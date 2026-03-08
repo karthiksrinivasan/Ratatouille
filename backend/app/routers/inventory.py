@@ -328,3 +328,71 @@ async def find_matching_saved_recipes(
         )
     )
     return suggestions[:5]
+
+
+async def generate_buddy_recipes(confirmed_ingredients: list[str]) -> list[dict]:
+    """Use Gemini to suggest recipes from available ingredients."""
+    ingredients_str = ", ".join(confirmed_ingredients)
+
+    response = await gemini_client.aio.models.generate_content(
+        model=MODEL_FLASH,
+        contents=f"""Given these available ingredients: {ingredients_str}
+
+Suggest 3 recipes that can be made using primarily these ingredients.
+For each recipe, you may include up to 3 common pantry staples not in the list
+(salt, pepper, oil, butter, etc.) as missing ingredients.
+
+Return a JSON array where each recipe has:
+- title: string
+- description: string (1 sentence)
+- match_score: float (proportion of recipe ingredients that are in the available list)
+- matched_ingredients: array of strings (from available list used)
+- missing_ingredients: array of strings (needed but not available)
+- estimated_time_min: integer
+- difficulty: "easy" | "medium" | "hard"
+- cuisine: string
+- explanation: string (1-2 sentences explaining WHY this recipe fits these ingredients — e.g., "Your chicken, garlic, and lemon are the core of a classic piccata. You only need capers and flour.")
+- assumptions: array of strings (what you assumed — e.g., "Assumes you have basic pantry staples: salt, pepper, olive oil")
+
+Prioritize:
+1. Recipes that use more of the available ingredients
+2. Recipes with fewer missing ingredients
+3. Reasonable meal options (not just combinations)
+
+Return ONLY valid JSON.""",
+    )
+
+    try:
+        recipes = json.loads(response.text)
+    except json.JSONDecodeError:
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", response.text)
+        if match:
+            recipes = json.loads(match.group(1))
+        else:
+            return []
+
+    suggestions = []
+    for recipe in recipes:
+        suggestions.append(
+            {
+                "suggestion_id": str(uuid.uuid4()),
+                "source_type": "buddy_generated",
+                "recipe_id": None,
+                "title": recipe.get("title", ""),
+                "description": recipe.get("description"),
+                "match_score": recipe.get("match_score", 0.7),
+                "matched_ingredients": recipe.get("matched_ingredients", []),
+                "missing_ingredients": recipe.get("missing_ingredients", []),
+                "estimated_time_min": recipe.get("estimated_time_min"),
+                "difficulty": recipe.get("difficulty"),
+                "cuisine": recipe.get("cuisine"),
+                "source_label": "Buddy",
+                "explanation": recipe.get("explanation", ""),
+                "grounding_sources": [
+                    f"Generated from your confirmed ingredients: {ingredients_str}"
+                ],
+                "assumptions": recipe.get("assumptions", []),
+            }
+        )
+
+    return suggestions
