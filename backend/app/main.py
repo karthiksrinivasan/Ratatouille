@@ -50,7 +50,35 @@ firebase_admin.initialize_app(options=_firebase_opts)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    checks = {}
+    try:
+        from app.services.firestore import db
+        await db.collection("_health").document("check").get()
+        checks["firestore"] = "ok"
+    except Exception:
+        checks["firestore"] = "error"
+
+    try:
+        from app.services.storage import bucket
+        bucket.blob("_health/check.txt").exists()
+        checks["gcs"] = "ok"
+    except Exception:
+        checks["gcs"] = "error"
+
+    status = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
+    return {"status": status, "checks": checks}
+
+
+@app.on_event("startup")
+async def warmup():
+    try:
+        from app.services.gemini import gemini_client, MODEL_FLASH
+        await gemini_client.aio.models.generate_content(
+            model=MODEL_FLASH, contents="Hello"
+        )
+        logger.info("Gemini client warmed up")
+    except Exception as e:
+        logger.warning(f"Warmup call failed (non-critical): {e}")
 
 
 # Internal metrics endpoint (admin only)

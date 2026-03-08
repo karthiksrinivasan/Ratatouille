@@ -1,6 +1,6 @@
-"""Tests for Task 1.6 — FastAPI app health endpoint."""
+"""Tests for health endpoint and startup warmup (Epic 7, Task 7.11)."""
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock, MagicMock
 
 
 @pytest.fixture
@@ -12,11 +12,77 @@ def client():
         return TestClient(app)
 
 
-def test_health_returns_200(client):
-    """GET /health returns 200 with status ok."""
-    response = client.get("/health")
+def test_health_returns_ok_when_services_available(client):
+    """GET /health returns 'ok' when Firestore and GCS are reachable."""
+    mock_doc = AsyncMock()
+    mock_collection = MagicMock()
+    mock_collection.document.return_value.get = mock_doc
+
+    mock_blob = MagicMock()
+    mock_blob.exists.return_value = True
+    mock_bucket = MagicMock()
+    mock_bucket.blob.return_value = mock_blob
+
+    with patch("app.services.firestore.db.collection", return_value=mock_collection), \
+         patch("app.services.storage.bucket", mock_bucket):
+        response = client.get("/health")
+
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["checks"]["firestore"] == "ok"
+    assert data["checks"]["gcs"] == "ok"
+
+
+def test_health_returns_degraded_when_firestore_fails(client):
+    """GET /health returns 'degraded' when Firestore is unreachable."""
+    mock_blob = MagicMock()
+    mock_blob.exists.return_value = True
+    mock_bucket = MagicMock()
+    mock_bucket.blob.return_value = mock_blob
+
+    with patch("app.services.firestore.db.collection", side_effect=Exception("connection error")), \
+         patch("app.services.storage.bucket", mock_bucket):
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "degraded"
+    assert data["checks"]["firestore"] == "error"
+    assert data["checks"]["gcs"] == "ok"
+
+
+def test_health_returns_degraded_when_gcs_fails(client):
+    """GET /health returns 'degraded' when GCS is unreachable."""
+    mock_doc = AsyncMock()
+    mock_collection = MagicMock()
+    mock_collection.document.return_value.get = mock_doc
+
+    mock_bucket = MagicMock()
+    mock_bucket.blob.side_effect = Exception("gcs error")
+
+    with patch("app.services.firestore.db.collection", return_value=mock_collection), \
+         patch("app.services.storage.bucket", mock_bucket):
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "degraded"
+    assert data["checks"]["firestore"] == "ok"
+    assert data["checks"]["gcs"] == "error"
+
+
+def test_startup_warmup_runs_without_error():
+    """Startup warmup event completes without raising."""
+    with patch("firebase_admin.initialize_app"):
+        from app.main import warmup
+        import asyncio
+
+        mock_generate = AsyncMock(return_value="ok")
+        with patch("app.services.gemini.gemini_client.aio.models.generate_content", mock_generate):
+            asyncio.get_event_loop().run_until_complete(warmup())
+
+        mock_generate.assert_called_once()
 
 
 def test_cors_headers(client):
