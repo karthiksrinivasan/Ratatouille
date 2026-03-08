@@ -25,7 +25,12 @@ class WsClient extends ChangeNotifier {
   String? _currentSessionId;
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
+  Timer? _heartbeatTimer;
+  Timer? _pongTimeoutTimer;
+  final Set<String> _processedEventIds = {};
   static const int _maxReconnectAttempts = 5;
+  static const Duration _heartbeatInterval = Duration(seconds: 15);
+  static const Duration _pongTimeout = Duration(seconds: 10);
 
   /// Controller that broadcasts incoming messages to listeners.
   final StreamController<Map<String, dynamic>> _messageController =
@@ -77,6 +82,12 @@ class WsClient extends ChangeNotifier {
       _reconnectAttempts = 0;
       _setState(WsConnectionState.connected);
 
+      // Send auth first-message fallback (in case query param auth fails).
+      _channel!.sink.add(jsonEncode({'type': 'auth', 'token': token}));
+
+      // Start heartbeat.
+      _startHeartbeat();
+
       _subscription = _channel!.stream.listen(
         _onData,
         onError: _onError,
@@ -91,9 +102,11 @@ class WsClient extends ChangeNotifier {
 
   /// Close the current WebSocket connection.
   Future<void> disconnect() async {
+    _stopHeartbeat();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _currentSessionId = null;
+    _processedEventIds.clear();
     await _subscription?.cancel();
     _subscription = null;
     await _channel?.sink.close();
@@ -177,9 +190,50 @@ class WsClient extends ChangeNotifier {
   // Internals
   // ---------------------------------------------------------------------------
 
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) {
+      if (_state == WsConnectionState.connected) {
+        sendPing();
+        _pongTimeoutTimer?.cancel();
+        _pongTimeoutTimer = Timer(_pongTimeout, () {
+          debugPrint('WsClient: pong timeout, reconnecting');
+          _channel?.sink.close();
+        });
+      }
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    _pongTimeoutTimer?.cancel();
+    _pongTimeoutTimer = null;
+  }
+
   void _onData(dynamic data) {
     try {
       final decoded = jsonDecode(data as String) as Map<String, dynamic>;
+      final type = decoded['type'] as String?;
+
+      // Handle pong — cancel timeout.
+      if (type == 'pong') {
+        _pongTimeoutTimer?.cancel();
+        return;
+      }
+
+      // Deduplicate events by event_id if present.
+      final eventId = decoded['event_id'] as String?;
+      if (eventId != null) {
+        if (_processedEventIds.contains(eventId)) return;
+        _processedEventIds.add(eventId);
+        // Keep set bounded.
+        if (_processedEventIds.length > 500) {
+          final toRemove = _processedEventIds.take(250).toList();
+          _processedEventIds.removeAll(toRemove);
+        }
+      }
+
       _messageController.add(decoded);
     } catch (e) {
       debugPrint('WsClient: failed to decode message: $e');
@@ -227,6 +281,7 @@ class WsClient extends ChangeNotifier {
 
   @override
   void dispose() {
+    _stopHeartbeat();
     _reconnectTimer?.cancel();
     disconnect();
     _messageController.close();

@@ -176,6 +176,44 @@ class ApiClient {
     return headers;
   }
 
+  /// Execute a GET request with automatic 401 retry (force-refreshes token).
+  Future<Map<String, dynamic>> getWithRetry(
+    String path, {
+    Map<String, String>? queryParams,
+  }) async {
+    try {
+      return await get(path, queryParams: queryParams);
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) {
+        await _forceRefreshToken();
+        return get(path, queryParams: queryParams);
+      }
+      rethrow;
+    }
+  }
+
+  /// Execute a POST request with automatic 401 retry (force-refreshes token).
+  Future<Map<String, dynamic>> postWithRetry(
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    try {
+      return await post(path, body: body);
+    } on ApiException catch (e) {
+      if (e.isUnauthorized) {
+        await _forceRefreshToken();
+        return post(path, body: body);
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _forceRefreshToken() async {
+    if (authService != null) {
+      await authService!.getIdToken(forceRefresh: true);
+    }
+  }
+
   Map<String, dynamic> _handleResponse(http.Response response) {
     final body = response.body.isNotEmpty
         ? jsonDecode(response.body) as Map<String, dynamic>
