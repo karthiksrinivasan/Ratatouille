@@ -219,6 +219,35 @@ run_build_check() {
         return 1
     }
 
+    # Run pytest if tests exist
+    if [[ -d "${PROJECT_ROOT}/backend/tests" ]]; then
+        log "Running pytest..."
+        local pytest_output
+        pytest_output=$(
+            source "${venv_dir}/bin/activate"
+            cd "${PROJECT_ROOT}/backend"
+            python -m pytest tests/ -v --tb=short 2>&1
+        ) || {
+            echo "pytest failed:"$'\n'"$pytest_output" > "$BUILD_ERROR_FILE"
+            log "ERROR: tests failing after Epic ${epic_num}"
+            return 1
+        }
+    fi
+
+    # If mobile/ exists, check Flutter analysis too
+    if [[ -d "${PROJECT_ROOT}/mobile" && -f "${PROJECT_ROOT}/mobile/pubspec.yaml" ]]; then
+        log "Running Flutter analysis..."
+        local flutter_output
+        flutter_output=$(
+            cd "${PROJECT_ROOT}/mobile"
+            flutter analyze --no-fatal-infos 2>&1
+        ) || {
+            echo "Flutter analyze failed:"$'\n'"$flutter_output" > "$BUILD_ERROR_FILE"
+            log "ERROR: Flutter analysis failed after Epic ${epic_num}"
+            return 1
+        }
+    fi
+
     log "Build check passed."
     rm -f "$BUILD_ERROR_FILE"
     return 0
@@ -312,13 +341,58 @@ The CLAUDE.md file in the project root has all conventions — you have already 
 
 KEY RULES:
 1. Read the epic file AND the referenced PRD/tech guide sections before writing any code.
-2. Implement ALL tasks in the epic sequentially.
+2. Implement ALL tasks in the epic sequentially — do NOT skip any task.
 3. Use subagents (the Agent tool) to parallelize independent tasks within the epic.
 4. After implementing each task, verify its acceptance criteria.
 5. Write clean, production-quality code — not throwaway hackathon code.
 6. Follow the project conventions in CLAUDE.md (async everywhere, Pydantic models, etc.)
 7. Do NOT modify files from previous epics unless the current epic explicitly requires it (e.g., mounting a new router).
 8. If a task requires infrastructure setup (GCP commands), create the code artifacts but note that GCP commands should be run separately.
+
+MOBILE / FLUTTER TASKS — DO NOT SKIP:
+Some epics include "Mobile UX Implementation" tasks. You MUST implement these.
+- If the mobile/ directory does not exist yet, scaffold a new Flutter project:
+    cd mobile && flutter create --org com.ratatouille --project-name ratatouille .
+  Then build out the screens/widgets required by the task.
+- If the mobile/ directory already exists, add to the existing Flutter project.
+- Mobile UX is a first-class, judging-critical deliverable — not optional polish.
+- Follow Flutter best practices: use provider or riverpod for state, material3 theme,
+  responsive layouts, and clear separation of screens/widgets/services.
+- The mobile app should connect to the backend API endpoints you have already built.
+- Use environment config for the backend URL (do not hardcode localhost).
+- Every mobile task gets its own commit just like backend tasks.
+
+TESTING — REQUIRED FOR EVERY TASK:
+You MUST write and run tests for each task as part of the implementation. Tests are not optional.
+Follow this testing strategy:
+
+Backend (Python / FastAPI):
+- Place tests in backend/tests/ mirroring the app structure:
+    backend/tests/test_routers/test_recipes.py
+    backend/tests/test_services/test_ingredients.py
+    backend/tests/test_agents/test_orchestrator.py
+    backend/tests/test_models/test_recipe.py
+- Use pytest + httpx.AsyncClient for endpoint tests (with TestClient from FastAPI).
+- Mock external dependencies (Firestore, GCS, Gemini, Firebase Auth) using unittest.mock or pytest-mock.
+  Do NOT make real calls to GCP services in tests.
+- For auth-protected endpoints, create a fixture that overrides the get_current_user dependency.
+- Write at minimum for each task:
+  * Unit tests: test individual functions, model validation, edge cases
+  * Integration tests: test endpoint request/response with mocked dependencies
+- After writing tests, RUN THEM: cd backend && python -m pytest tests/ -v
+- If any test fails, fix the code or test until all pass.
+- Include pytest, httpx, and pytest-asyncio in requirements.txt (add them if missing).
+- Ensure backend/tests/__init__.py and all test subdirectory __init__.py files exist.
+
+Flutter (Mobile):
+- Place tests in mobile/test/ mirroring the lib structure.
+- Write widget tests for key screens/components.
+- After writing tests, RUN THEM: cd mobile && flutter test
+- If any test fails, fix it.
+
+Test files are committed as part of the same task commit — not in a separate commit.
+Example: task 2.1 creates app/routers/recipes.py AND tests/test_routers/test_recipes.py,
+both committed together as "feat(epic-2): task 2.1 — recipe CRUD endpoints".
 
 GIT COMMIT WORKFLOW — THIS IS CRITICAL:
 You MUST create a git commit after completing EACH individual task in the epic.
@@ -394,9 +468,13 @@ CONTEXT_HEADER
     echo "4. Explore the existing codebase to understand what's already built."
     echo "5. For EACH task in the epic:"
     echo "   a. Implement the task (use subagents for independent sub-work if helpful)."
-    echo "   b. Verify acceptance criteria."
-    echo "   c. Stage the specific files and commit: feat(epic-${epic_num}): task N.M — description"
-    echo "6. After all tasks, do a final cleanup commit if needed."
+    echo "   b. Write tests for the task (unit + integration as described in TESTING section)."
+    echo "   c. Run the tests: cd backend && python -m pytest tests/ -v"
+    echo "   d. Fix any test failures — do not move on with failing tests."
+    echo "   e. Verify acceptance criteria."
+    echo "   f. Stage implementation + test files and commit: feat(epic-${epic_num}): task N.M — description"
+    echo "6. After all tasks, run the FULL test suite one final time: cd backend && python -m pytest tests/ -v"
+    echo "7. If anything fails, fix it and do a final cleanup commit."
     echo ""
     echo "REMEMBER: One commit per task. Do not batch. Do not skip commits."
     echo ""
@@ -428,19 +506,32 @@ PHASE 1 — AUDIT:
    - Convention violations (sync instead of async, missing Pydantic models, etc.)
    - Missing __init__.py files
    - Async Gemini calls (must use gemini_client.aio or asyncio.to_thread)
+   - SKIPPED TASKS — especially "Mobile UX Implementation" tasks. Every task in the
+     epic MUST be implemented. If a mobile task was skipped, implement it now.
 
-PHASE 2 — SMOKE TEST:
-Run the following to verify the backend can import without errors:
+PHASE 2 — SMOKE TEST + TEST SUITE:
+Step A — Import check:
   cd backend && python3 -c "from app.main import app; print('Import OK')"
+If this fails, FIX it immediately (missing __init__.py, circular imports, etc.).
 
-If the import fails, FIX the root cause immediately (missing __init__.py, circular imports,
-bad imports, missing dependencies in requirements.txt, etc.).
-
-Also test each module added by this epic individually:
+Step B — Module imports (test each module added by this epic):
   python3 -c "from app.routers.X import router"
   python3 -c "from app.models.X import SomeModel"
   python3 -c "from app.services.X import something"
   python3 -c "from app.agents.X import SomeAgent"
+
+Step C — Run the full test suite:
+  cd backend && python -m pytest tests/ -v
+If tests fail:
+  - Determine if the test or the implementation is wrong.
+  - Fix whichever is incorrect.
+  - Re-run until all tests pass.
+If NO tests exist for this epic's tasks, WRITE THEM before proceeding. Every task
+should have corresponding tests in backend/tests/. Missing test coverage is a validation failure.
+
+Step D — Flutter tests (if mobile/ exists):
+  cd mobile && flutter test
+Fix any failures.
 
 PHASE 3 — FIX EVERYTHING:
 This is the most important phase. For EVERY issue found in Phase 1 and Phase 2:
@@ -467,7 +558,9 @@ After fixing, produce a final structured report:
 ### Smoke Test: PASS | FAIL
 (include the actual output from AFTER fixes)
 
-### Task Checklist:
+### Test Suite: X passed, Y failed, Z missing
+(include the pytest output summary line)
+(list any tasks that have NO test coverage)
 - [ ] Task X.Y: description — PASS/FAIL (details)
 
 ### Issues Found and Fixed:
@@ -571,6 +664,17 @@ find_resume_task() {
     done
     # All tasks done
     echo ""
+}
+
+# Check if an epic has new tasks that weren't in the original run.
+# Compares task IDs in the epic file against committed task IDs in git log.
+has_new_tasks() {
+    local epic_num=$1
+    # Re-scan git log to get latest committed tasks
+    record_completed_tasks "$epic_num"
+    local resume
+    resume=$(find_resume_task "$epic_num")
+    [[ -n "$resume" ]]
 }
 
 ###############################################################################
@@ -688,10 +792,18 @@ main() {
 
         log_section "Epic ${epic_num}: ${epic_filename}"
 
-        # Skip if already done and validated (unless --only is set)
+        # Check if this epic was previously completed but has new tasks added
+        local has_new=false
         if [[ -z "$ONLY_EPIC" ]] && is_done "$epic_num" && is_validated "$epic_num"; then
-            log "Epic ${epic_num} already completed and validated. Skipping."
-            continue
+            if has_new_tasks "$epic_num"; then
+                has_new=true
+                log "Epic ${epic_num} was completed, but NEW TASKS detected in the epic file."
+                # Clear done/validated state so it goes through impl + validation
+                rm -f "${STATE_DIR}/epic-${epic_num}.done" "${STATE_DIR}/epic-${epic_num}.validated"
+            else
+                log "Epic ${epic_num} already completed and validated. Skipping."
+                continue
+            fi
         fi
 
         # Determine resume point for this epic
@@ -704,15 +816,15 @@ main() {
             # Epic marked done but not validated — skip to validation
             resume_task=""
         else
-            # Check if we have partial progress
+            # Check if we have partial progress (including newly added tasks)
             local auto_resume
             auto_resume=$(find_resume_task "$epic_num")
             if [[ -n "$auto_resume" ]]; then
                 local first_task
                 first_task=$(get_task_ids "$epic_num" | head -1)
-                if [[ "$auto_resume" != "$first_task" ]]; then
+                if [[ "$auto_resume" != "$first_task" ]] || $has_new; then
                     resume_task="$auto_resume"
-                    log "Detected partial progress — resuming from task ${resume_task}"
+                    log "Detected incomplete tasks — resuming from task ${resume_task}"
                 fi
             fi
         fi
