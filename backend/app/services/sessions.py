@@ -10,8 +10,10 @@ from app.services.firestore import db
 
 async def create_session_record(
     uid: str,
-    recipe_id: str,
+    session_mode: str = "recipe_guided",
+    recipe_id: Optional[str] = None,
     mode_settings: Optional[dict] = None,
+    freestyle_context: Optional[dict] = None,
 ) -> dict:
     """Create and persist a session; reusable by both session router and scan flow.
 
@@ -21,6 +23,7 @@ async def create_session_record(
     session_data = {
         "session_id": session_id,
         "uid": uid,
+        "session_mode": session_mode,
         "recipe_id": recipe_id,
         "status": "created",
         "current_step": 0,
@@ -29,6 +32,7 @@ async def create_session_record(
             "ambient_listen": False,
             "phone_position": "counter",
         },
+        "freestyle_context": freestyle_context or {},
         "started_at": None,
         "ended_at": None,
         "created_at": firestore.SERVER_TIMESTAMP,

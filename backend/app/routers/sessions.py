@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from google.cloud import firestore
 
 from app.auth.firebase import get_current_user
-from app.models.session import ModeSettings, SessionCreate
+from app.models.session import FreestyleContext, ModeSettings, SessionCreate
 from app.services.firestore import db
 from app.services.gemini import gemini_client, MODEL_FLASH
 from app.services.sessions import create_session_record, log_session_event
@@ -19,25 +19,35 @@ async def create_session(
     body: SessionCreate,
     user: dict = Depends(get_current_user),
 ):
-    """Create a session linked to a recipe."""
+    """Create a session — supports both recipe_guided and freestyle modes."""
     uid = user["uid"]
 
-    # Verify recipe exists
-    recipe_doc = await db.collection("recipes").document(body.recipe_id).get()
-    if not recipe_doc.exists:
-        raise HTTPException(404, "Recipe not found")
+    if body.session_mode == "recipe_guided":
+        if not body.recipe_id:
+            raise HTTPException(422, "recipe_id required for recipe_guided mode")
+        recipe_doc = await db.collection("recipes").document(body.recipe_id).get()
+        if not recipe_doc.exists:
+            raise HTTPException(404, "Recipe not found")
+    elif body.session_mode != "freestyle":
+        raise HTTPException(422, f"Invalid session_mode: {body.session_mode}")
 
     mode = (body.mode_settings or ModeSettings()).model_dump()
+    freestyle_ctx = (
+        body.freestyle_context.model_dump() if body.freestyle_context else {}
+    )
 
     session_data = await create_session_record(
         uid=uid,
+        session_mode=body.session_mode,
         recipe_id=body.recipe_id,
         mode_settings=mode,
+        freestyle_context=freestyle_ctx,
     )
 
     return {
         "session_id": session_data["session_id"],
         "status": session_data["status"],
+        "session_mode": body.session_mode,
         "recipe_id": body.recipe_id,
         "mode_settings": mode,
     }
@@ -59,9 +69,11 @@ async def activate_session(
     if session["status"] != "created":
         raise HTTPException(400, f"Session is already {session['status']}")
 
-    # Load recipe for session context
-    recipe_doc = await db.collection("recipes").document(session["recipe_id"]).get()
-    recipe = recipe_doc.to_dict()
+    # Load recipe for session context (optional in freestyle mode)
+    recipe = None
+    if session.get("recipe_id"):
+        recipe_doc = await db.collection("recipes").document(session["recipe_id"]).get()
+        recipe = recipe_doc.to_dict() if recipe_doc.exists else None
 
     # Activate session and set first step
     await db.collection("sessions").document(session_id).update({
@@ -73,6 +85,7 @@ async def activate_session(
     return {
         "session_id": session_id,
         "status": "active",
+        "session_mode": session.get("session_mode", "recipe_guided"),
         "recipe": recipe,
         "message": "Session activated. Connect to WebSocket for live interaction.",
         "ws_url": f"/v1/live/{session_id}",
