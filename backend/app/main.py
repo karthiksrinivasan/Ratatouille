@@ -1,9 +1,14 @@
-from fastapi import FastAPI
+import time
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 import firebase_admin
-from firebase_admin import credentials
 
 from app.config import settings
+from app.services.logging import logger, setup_logging
+
+# Configure structured logging before anything else
+setup_logging()
 
 app = FastAPI(title="Ratatouille API", version="0.1.0")
 
@@ -14,6 +19,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_request(request: Request, call_next):
+    """Log every HTTP request with method, path, status, and latency."""
+    start = time.time()
+    response = await call_next(request)
+    latency_ms = (time.time() - start) * 1000
+
+    # Skip noisy health checks from load balancers
+    if request.url.path != "/health":
+        logger.info(
+            f"{request.method} {request.url.path} {response.status_code}",
+            extra={
+                "endpoint": request.url.path,
+                "latency_ms": round(latency_ms, 2),
+                "status_code": response.status_code,
+            },
+        )
+    return response
+
 
 # Initialize Firebase Admin SDK once
 _firebase_opts = {}
