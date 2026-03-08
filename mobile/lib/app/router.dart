@@ -10,6 +10,7 @@ import '../features/scan/screens/scan_screen.dart';
 import '../features/scan/screens/ingredient_review_screen.dart';
 import '../features/suggestions/screens/suggestions_screen.dart';
 import '../features/live_session/screens/live_session_screen.dart';
+import '../features/live_session/screens/session_setup_screen.dart';
 import '../features/vision_guide/screens/vision_guide_screen.dart';
 import '../features/post_session/screens/post_session_screen.dart';
 
@@ -26,6 +27,7 @@ class AppRoutes {
   static const String recipeCreate = '/recipes/create';
   static const String ingredientChecklist = '/recipes/:id/checklist';
   static const String suggestions = '/suggestions';
+  static const String sessionSetup = '/session/:id/setup';
   static const String session = '/session/:id';
   static const String visionGuide = '/vision-guide/:id';
   static const String postSession = '/post-session/:id';
@@ -37,6 +39,7 @@ class AppRoutes {
   static String ingredientChecklistPath(String id) => '/recipes/$id/checklist';
 
   /// Build a session path with the given [id].
+  static String sessionSetupPath(String id) => '/session/$id/setup';
   static String sessionPath(String id) => '/session/$id';
 
   /// Build a vision guide path with the given [id].
@@ -118,6 +121,17 @@ final GoRouter appRouter = GoRouter(
       path: AppRoutes.suggestions,
       name: 'suggestions',
       builder: (context, state) => const SuggestionsScreen(),
+    ),
+
+    // Session setup (before live session)
+    GoRoute(
+      path: AppRoutes.sessionSetup,
+      name: 'sessionSetup',
+      builder: (context, state) {
+        final id = state.pathParameters['id']!;
+        final title = state.uri.queryParameters['title'];
+        return SessionSetupScreen(sessionId: id, recipeTitle: title);
+      },
     ),
 
     // Live cooking session
