@@ -184,23 +184,11 @@ async def update_recipe(
     if data["uid"] != user["uid"]:
         raise HTTPException(403, "Not your recipe")
 
-    # Rebuild with updated body, keep same recipe_id and uid
-    technique_tags = list(set(
-        tag for step in body.steps for tag in step.technique_tags
-    ))
-    ingredients_normalized = [
-        ing.name_normalized or ing.name.lower().strip()
-        for ing in body.ingredients
-    ]
-
-    update_data = {
-        **body.model_dump(),
-        "recipe_id": recipe_id,
-        "uid": user["uid"],
-        "technique_tags": technique_tags,
-        "ingredients_normalized": ingredients_normalized,
-        "updated_at": firestore.SERVER_TIMESTAMP,
-    }
+    # Extract technique tags and build data using shared helper
+    body.steps = await extract_technique_tags(body.steps)
+    update_data = _build_recipe_data(body, recipe_id, user["uid"])
+    # Preserve original created_at, only update updated_at
+    del update_data["created_at"]
     await doc_ref.update(update_data)
     return update_data
 
