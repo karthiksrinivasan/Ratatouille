@@ -10,7 +10,7 @@ import '../widgets/process_bar.dart';
 import '../widgets/conflict_chooser.dart';
 
 /// Speaking/connection state for the live session UI.
-enum BuddyState { listening, speaking, interrupted, reconnecting }
+enum BuddyState { listening, speaking, interrupted, reconnecting, degraded }
 
 /// Live cooking session screen with real-time AI guidance.
 ///
@@ -41,6 +41,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   String _lastBuddyMessage = '';
   String? _interruptedPreview;
   bool _hasInterruptedContent = false;
+  bool _textInputMode = false; // Degraded mode: text input fallback
 
   // Epic 5 — process tracking state
   List<CookingProcess> _processes = [];
@@ -54,6 +55,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   // Keep-alive ping timer
   Timer? _pingTimer;
+  final TextEditingController _textController = TextEditingController();
 
   @override
   void initState() {
@@ -77,6 +79,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   @override
   void dispose() {
     _pingTimer?.cancel();
+    _textController.dispose();
     _messageSub?.cancel();
     _ws.removeListener(_onConnectionStateChanged);
     if (widget.wsClient == null) {
@@ -336,12 +339,24 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
               ),
             ),
 
+            // Degraded mode text input
+            if (_textInputMode || _buddyState == BuddyState.degraded)
+              _TextInputBar(
+                controller: _textController,
+                onSend: (text) {
+                  _ws.sendVoiceQuery(text);
+                  _textController.clear();
+                },
+              ),
+
             // Hands-busy controls — large tap targets
             _HandsBusyControls(
               onNextStep: () => _ws.sendStepComplete(_currentStep),
               onVisionCheck: () => context.go(AppRoutes.visionGuidePath(widget.sessionId)),
               onRepeatQuickly: () => _ws.sendVoiceQuery('repeat quickly'),
               onFinish: () => context.go(AppRoutes.postSessionPath(widget.sessionId)),
+              onToggleTextMode: () => setState(() => _textInputMode = !_textInputMode),
+              textModeActive: _textInputMode,
             ),
           ],
         ),
@@ -387,6 +402,7 @@ class _StateBanner extends StatelessWidget {
       BuddyState.speaking => (Icons.volume_up, 'Buddy speaking', Colors.green),
       BuddyState.interrupted => (Icons.pause_circle, 'Interrupted', Colors.orange),
       BuddyState.reconnecting => (Icons.wifi_off, 'Reconnecting...', Colors.red),
+      BuddyState.degraded => (Icons.text_fields, 'Text-only mode', Colors.amber),
     };
 
     return Container(
@@ -442,17 +458,64 @@ class _AmbientPrivacyBanner extends StatelessWidget {
 }
 
 /// Large, ergonomic controls for hands-busy cooking context.
+/// Text input bar for degraded (text-only) mode.
+class _TextInputBar extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onSend;
+
+  const _TextInputBar({
+    required this.controller,
+    required this.onSend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                hintText: 'Type your question...',
+                isDense: true,
+              ),
+              textInputAction: TextInputAction.send,
+              onSubmitted: (text) {
+                if (text.trim().isNotEmpty) onSend(text.trim());
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.send),
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isNotEmpty) onSend(text);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _HandsBusyControls extends StatelessWidget {
   final VoidCallback onNextStep;
   final VoidCallback onVisionCheck;
   final VoidCallback onRepeatQuickly;
   final VoidCallback onFinish;
+  final VoidCallback? onToggleTextMode;
+  final bool textModeActive;
 
   const _HandsBusyControls({
     required this.onNextStep,
     required this.onVisionCheck,
     required this.onRepeatQuickly,
     required this.onFinish,
+    this.onToggleTextMode,
+    this.textModeActive = false,
   });
 
   @override
@@ -499,14 +562,30 @@ class _HandsBusyControls extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: TextButton.icon(
-              onPressed: onFinish,
-              icon: const Icon(Icons.check_circle),
-              label: const Text('Finish Session'),
-            ),
+          Row(
+            children: [
+              if (onToggleTextMode != null)
+                Expanded(
+                  child: SizedBox(
+                    height: 48,
+                    child: TextButton.icon(
+                      onPressed: onToggleTextMode,
+                      icon: Icon(textModeActive ? Icons.mic : Icons.keyboard),
+                      label: Text(textModeActive ? 'Voice Mode' : 'Type Instead'),
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: SizedBox(
+                  height: 48,
+                  child: TextButton.icon(
+                    onPressed: onFinish,
+                    icon: const Icon(Icons.check_circle),
+                    label: const Text('Finish Session'),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
