@@ -1,0 +1,4 @@
+.epic-state/
+.epic-logs/
+.epic-venv/
+.env
