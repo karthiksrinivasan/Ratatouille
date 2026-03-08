@@ -9,6 +9,7 @@ Clean session wind-down with memory persistence, structured observability, submi
 - All previous epics (1-6) substantially complete
 - Demo recipe seeded and functional through full flow
 - Epic 8 critical UX paths complete and validated on real devices
+- Epic 9 zero-setup path complete if included in final demo narrative
 
 ## PRD References
 
@@ -477,12 +478,18 @@ async def with_retry(coro_func, max_retries=2, backoff_base=1.0):
 
 ### 7.9 Demo Script & Recipe Validation
 
-**What:** Create a scripted demo that exercises all 6 hackathon success criteria, all 14 UX requirements, and aligns with the §14.4 judging scorecard. Demo video must stay under 4 minutes (NFR-08).
+**What:** Create a scripted demo that exercises all 6 hackathon success criteria, all 14 UX requirements, and aligns with the §14.4 judging scorecard. Include a short zero-setup proof beat if Epic 9 is in scope. Demo video must stay under 4 minutes (NFR-08).
 
 **Demo Script:**
 
 ```markdown
 ## Demo Flow (Ratatouille — Aglio e Olio) — Target: 3:30-3:50
+
+### Act 0: Zero-Setup Proof (0:20-0:30, optional but recommended)
+1. Open app → tap `Cook Now (Seasoned Chef Buddy)` with no saved recipe selection.
+2. Say: "I want something quick with eggs."
+3. Buddy gives immediate first action + timer suggestion.
+4. Exit and continue main scripted flow below.
 
 ### Act 1: Entry & Scan (1:00-1:15)
 1. Open app → Home screen with "Cook from Fridge or Pantry" [UX-1]
@@ -550,6 +557,7 @@ async def with_retry(coro_func, max_retries=2, backoff_base=1.0):
 **Acceptance Criteria:**
 - [ ] Demo script covers all 6 success criteria (§14.3)
 - [ ] Demo script covers all 14 UX requirements (§13), including UX-13 (barge-in) and UX-14 ("Why this recipe?")
+- [ ] Zero-setup proof segment included or explicitly documented as deferred
 - [ ] Demo runtime fits within 3:50 (leaving 10s margin under 4:00 cap)
 - [ ] Barge-in moment is natural and clearly demonstrates interruption handling (NFR-07)
 - [ ] "Why this recipe?" explanation is grounded in confirmed ingredients (NFR-07)

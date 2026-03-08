@@ -86,16 +86,23 @@ Epic 1: Infrastructure & Platform Foundation
   │      ├──→ Integrates Epic 5 process bar/timer events
   │      └──→ Integrates Epic 6 vision/guide/taste/recovery UX
   │
+  ├──→ Epic 9: Zero-Setup "Seasoned Chef Buddy" Mode
+  │      │
+  │      ├──→ Extends Epic 4 session contracts for freestyle mode
+  │      ├──→ Extends Epic 8 home/live UX with no-setup entry
+  │      └──→ Feeds Epic 7 demo and judging evidence
+  │
   └──→ Epic 7: Post-Session, Observability & Demo Hardening
 ```
 
-**Critical path:** Epic 1 → Epic 2 → Epic 4 → Epic 5 + Epic 6 → Epic 8 → Epic 7
+**Critical path:** Epic 1 → Epic 2 → Epic 4 → Epic 8 → Epic 9 → Epic 7
 
 **Parallel tracks** (after Epic 2):
 - Track A: Epic 3 (recipe/scan/suggestion pipeline)
 - Track B: Epic 4 → Epic 5 + Epic 6 (live session core)
 - Track C: Epic 8 (mobile app foundation, backend integration, UX hardening)
-- Track D: Epic 7 (integration, polish, demo — depends on all others)
+- Track D: Epic 9 (zero-setup, no-recipe live mode on top of core session stack)
+- Track E: Epic 7 (integration, polish, demo — depends on all others)
 
 ## Mobile UX Track (First-Class, Not Optional)
 
@@ -107,7 +114,8 @@ Required UX deliverables across epics:
 3. Epic 4: resilient live session UI (ambient indicator, barge-in UI state, reconnect/resume UX).
 4. Epic 5: glanceable process bar with conflict-choice interaction under time pressure.
 5. Epic 6: side-by-side visual comparison UX (camera frame vs generated guide + cue overlays).
-6. Epic 7: full-device UX QA on at least one iOS and one Android test device.
+6. Epic 9: zero-setup `Cook Now` flow (no saved recipe required) with <=2 tap live-session entry.
+7. Epic 7: full-device UX QA on at least one iOS and one Android test device.
 
 ---
 
@@ -122,7 +130,8 @@ Required UX deliverables across epics:
 | 5 | [Process Management, Timers & Concurrency](./epic-5-process-timers.md) | 8 | Epic 4 | Engineer A + C |
 | 6 | [Vision, Visual Guides, Taste & Recovery](./epic-6-vision-taste-recovery.md) | 10 | Epic 4 | Engineer A + C |
 | 7 | [Post-Session, Observability & Demo](./epic-7-post-session-demo.md) | 12 | All epics | All engineers |
-| 8 | [Mobile App Foundation & UX Integration](./epic-8-mobile-app-foundation.md) | 14 | Epic 1 (start), integrates Epic 2-6 | Engineer A (Mobile Lead) + support |
+| 8 | [Mobile App Foundation & UX Integration](./epic-8-mobile-app-foundation.md) | 15 | Epic 1 (start), integrates Epic 2-6 | Engineer A (Mobile Lead) + support |
+| 9 | [Zero-Setup \"Seasoned Chef Buddy\" Mode](./epic-9-zero-setup-chef-buddy.md) | 10 | Epic 4, Epic 8 | Engineer A + C + B |
 
 ---
 

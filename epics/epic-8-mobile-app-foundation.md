@@ -8,6 +8,7 @@ Ship a production-grade mobile app shell (Flutter) with robust UX that connects 
 
 - Epic 1 complete (Firebase Auth, Cloud Run scaffold, base config)
 - Can start in parallel with backend epics, but full integration depends on Epic 2-6 endpoint readiness
+- Coordinate with Epic 9 for zero-setup `Cook Now` flow integration
 
 ## PRD References
 
@@ -26,6 +27,7 @@ Ship a production-grade mobile app shell (Flutter) with robust UX that connects 
 ## Backend Contract Surface (Mobile Integration)
 
 **REST**
+- `POST /v1/sessions` (supports `recipe_guided` and `freestyle`)
 - `POST /v1/inventory-scans`
 - `POST /v1/inventory-scans/{id}/detect`
 - `POST /v1/inventory-scans/{id}/confirm-ingredients`
@@ -128,7 +130,9 @@ Ship a production-grade mobile app shell (Flutter) with robust UX that connects 
 **What:** Deliver robust scan UX with confidence-aware ingredient editing.
 
 **Required screens:**
-1. Home entry (`Cook from Fridge or Pantry`)
+1. Home entry with two primary actions:
+   - `Cook from Fridge or Pantry`
+   - `Cook Now (Seasoned Chef Buddy)`
 2. Source + capture mode picker
 3. Capture screen (photos/video)
 4. Ingredient review chip editor with confidence states
@@ -137,6 +141,7 @@ Ship a production-grade mobile app shell (Flutter) with robust UX that connects 
 - [ ] User can complete scan+confirm flow quickly without keyboard by default
 - [ ] Low-confidence ingredients are visually distinguishable
 - [ ] Manual add/remove ingredient interaction is frictionless
+- [ ] Home entry makes no-setup `Cook Now` path discoverable and equal priority
 
 ---
 
@@ -279,6 +284,24 @@ Ship a production-grade mobile app shell (Flutter) with robust UX that connects 
 
 ---
 
+### 8.15 Zero-Setup Live Entry UX (Epic 9 Integration)
+
+**What:** Deliver a first-run path where users can start cooking help immediately without saved recipes.
+
+**Required UX behavior:**
+1. `Cook Now` from home creates freestyle session via `POST /v1/sessions`.
+2. Optional quick context sheet (goal, time, ingredients) is fully skippable.
+3. On skip, app still activates session and opens live screen with starter guidance.
+4. Error states provide explicit fallback: retry, switch to scan flow, or back to home.
+
+**Acceptance Criteria:**
+- [ ] User reaches active live session from home in <=2 taps when skipping context
+- [ ] Freestyle session creation and activation contracts are consumed correctly
+- [ ] No mandatory setup field blocks first-time entry
+- [ ] UX copy clearly communicates \"No recipe needed\"
+
+---
+
 ## Epic Completion Checklist
 
 - [ ] Auth + token lifecycle robust for REST and WS
@@ -291,3 +314,4 @@ Ship a production-grade mobile app shell (Flutter) with robust UX that connects 
 - [ ] iOS + Android real-device QA complete
 - [ ] Accessibility/performance gates pass for demo-critical flows
 - [ ] Connectivity hardening + contract verification complete for production-like demo stability
+- [ ] Zero-setup freestyle flow ships with no mandatory setup and stable activation
