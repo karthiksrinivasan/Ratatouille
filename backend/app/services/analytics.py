@@ -2,6 +2,7 @@
 
 Emits structured product events to Firestore for all PRD §14.1 metrics.
 """
+from typing import Optional
 
 import logging
 
@@ -33,7 +34,7 @@ PRODUCT_EVENTS = {
 }
 
 
-async def emit_product_event(event_type: str, uid: str, metadata: dict | None = None):
+async def emit_product_event(event_type: str, uid: str, metadata: Optional[dict] = None):
     """Emit a product analytics event to Firestore and increment metrics counter."""
     event = {
         "event_type": event_type,
