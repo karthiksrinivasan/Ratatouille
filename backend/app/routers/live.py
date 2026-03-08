@@ -15,6 +15,8 @@ from app.services.processes import (
     persist_process_state as persist_process,
 )
 from app.agents.orchestrator import create_session_orchestrator
+from app.services.analytics import emit_product_event
+from app.services.browse import BrowseSession
 
 router = APIRouter()
 
@@ -295,6 +297,62 @@ async def live_session(websocket: WebSocket, session_id: str):
                         "due_at": new_process["due_at"],
                     })
                     await push_process_bar(websocket, processes)
+
+            elif event_type == "browse_start":
+                source = data.get("source", "fridge")  # fridge | pantry
+                browse_session = BrowseSession(source=source)
+                orchestrator.state["browse_session"] = browse_session
+                await emit_product_event("browse_started", user["uid"], {"source": source})
+                await websocket.send_json({
+                    "type": "buddy_message",
+                    "text": f"Great, show me your {source}! I'll tell you what I see.",
+                    "browse_active": True,
+                    "source": source,
+                })
+
+            elif event_type == "browse_frame":
+                frame_uri = data.get("frame_uri", "")
+                browse_session = orchestrator.state.get("browse_session")
+                if browse_session is None:
+                    browse_session = BrowseSession(source="fridge")
+                    orchestrator.state["browse_session"] = browse_session
+                observation = await browse_session.process_frame(frame_uri)
+                await websocket.send_json({
+                    "type": "browse_observation",
+                    "observation": observation["observation"],
+                    "confidence": observation["confidence"],
+                })
+                if observation.get("candidates"):
+                    await websocket.send_json({
+                        "type": "ingredient_candidates",
+                        "candidates": observation["candidates"],
+                        "cumulative": browse_session.get_all_candidates(),
+                    })
+                if observation.get("question"):
+                    await websocket.send_json({
+                        "type": "browse_question",
+                        "text": observation["question"],
+                    })
+
+            elif event_type == "browse_stop":
+                browse_session = orchestrator.state.get("browse_session")
+                candidates = browse_session.get_all_candidates() if browse_session else []
+                # Merge into freestyle context
+                ctx = orchestrator.state.get("freestyle_context", {})
+                existing = ctx.get("available_ingredients", [])
+                new_ingredients = [c["name"] for c in candidates if c.get("confidence", 0) >= 0.5]
+                ctx["available_ingredients"] = list(set(existing + new_ingredients))
+                orchestrator.state["freestyle_context"] = ctx
+                orchestrator.state["browse_session"] = None
+                await emit_product_event("browse_completed", user["uid"], {
+                    "ingredient_count": len(new_ingredients),
+                })
+                await persist_session_state(session_id, {"freestyle_context": ctx})
+                await websocket.send_json({
+                    "type": "browse_complete",
+                    "ingredients": ctx["available_ingredients"],
+                    "text": f"I found {len(new_ingredients)} ingredients. Ready to cook or want to browse more?",
+                })
 
             elif event_type == "ambient_toggle":
                 enabled = data.get("enabled", False)

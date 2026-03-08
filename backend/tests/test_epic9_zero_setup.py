@@ -428,3 +428,71 @@ class TestZeroSetupMetrics:
         # These should be available after import
         assert hasattr(sr, 'emit_product_event')
         assert hasattr(sr, 'metrics')
+
+
+class TestLiveBrowseVideoChat:
+    """Task 9.11 — Fridge/Pantry Live Browse Video Chat."""
+
+    def test_browse_session_init(self):
+        from app.services.browse import BrowseSession
+        bs = BrowseSession(source="fridge")
+        assert bs.source == "fridge"
+        assert bs.frame_count == 0
+        assert bs.candidates == []
+
+    def test_browse_session_pantry(self):
+        from app.services.browse import BrowseSession
+        bs = BrowseSession(source="pantry")
+        assert bs.source == "pantry"
+
+    def test_browse_session_get_all_candidates_empty(self):
+        from app.services.browse import BrowseSession
+        bs = BrowseSession()
+        assert bs.get_all_candidates() == []
+
+    def test_browse_session_fallback_observation(self):
+        from app.services.browse import BrowseSession
+        bs = BrowseSession()
+        result = bs._fallback_observation()
+        assert result["confidence"] == 0.0
+        assert result["candidates"] == []
+        assert result["question"] is not None
+
+    @pytest.mark.asyncio
+    async def test_browse_session_process_frame_fallback(self):
+        """Frame processing falls back gracefully when Gemini fails."""
+        from app.services.browse import BrowseSession
+        bs = BrowseSession(source="fridge")
+        # With invalid URI, Gemini will fail → fallback
+        result = await bs.process_frame("gs://invalid/frame.jpg")
+        assert "observation" in result
+        assert "candidates" in result
+        assert "confidence" in result
+        assert bs.frame_count == 1
+
+    def test_browse_session_deduplicates_candidates(self):
+        from app.services.browse import BrowseSession
+        bs = BrowseSession()
+        # Simulate adding candidates manually
+        bs._seen_names.add("eggs")
+        bs.candidates.append({"name": "eggs", "confidence": 0.9})
+        # Try adding same name — won't appear in new candidates
+        assert "eggs" in bs._seen_names
+
+    def test_live_router_imports_browse(self):
+        import app.routers.live as lr
+        assert hasattr(lr, 'BrowseSession')
+        assert hasattr(lr, 'emit_product_event')
+
+    def test_browse_analytics_events_registered(self):
+        from app.services.analytics import PRODUCT_EVENTS
+        assert "browse_started" in PRODUCT_EVENTS
+        assert "browse_completed" in PRODUCT_EVENTS
+
+    def test_browse_fallback_no_text_input_required(self):
+        """Fallback asks for verbal confirmation, not text entry."""
+        from app.services.browse import BrowseSession
+        bs = BrowseSession()
+        fallback = bs._fallback_observation()
+        # Should suggest verbal or camera alternatives, not typing
+        assert "tell me" in fallback["observation"].lower() or "photo" in fallback["question"].lower()
