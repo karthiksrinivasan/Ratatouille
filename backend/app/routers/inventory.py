@@ -396,3 +396,76 @@ Return ONLY valid JSON.""",
         )
 
     return suggestions
+
+
+@router.get("/inventory-scans/{scan_id}/suggestions")
+async def get_suggestions(
+    scan_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Combine saved recipe matches and buddy-generated suggestions into dual-lane response."""
+    doc = await db.collection("inventory_scans").document(scan_id).get()
+    if not doc.exists:
+        raise HTTPException(404, "Scan not found")
+    scan = doc.to_dict()
+    if scan["uid"] != user["uid"]:
+        raise HTTPException(403, "Not your scan")
+    if scan["status"] != "confirmed":
+        raise HTTPException(400, "Ingredients must be confirmed first")
+
+    confirmed = scan["confirmed_ingredients"]
+
+    # Fetch user prefs for ranking
+    user_doc = await db.collection("users").document(user["uid"]).get()
+    profile = user_doc.to_dict() if user_doc.exists else {}
+    prefs = {
+        "max_time_minutes": profile.get("max_time_minutes", 40),
+        "skill_level": profile.get("skill_level", "medium"),
+    }
+
+    # Run both suggestion engines in parallel
+    import asyncio
+
+    saved_suggestions, buddy_suggestions = await asyncio.gather(
+        find_matching_saved_recipes(user["uid"], confirmed),
+        generate_buddy_recipes(confirmed),
+    )
+
+    # Apply FP-06 ranking consistently to buddy lane
+    for s in buddy_suggestions:
+        s["time_fit"] = _time_score(
+            s.get("estimated_time_min"), prefs["max_time_minutes"]
+        )
+        s["skill_fit"] = _difficulty_score(s.get("difficulty"), prefs["skill_level"])
+        s["ranking_score"] = _rank_score(
+            s.get("match_score", 0.0),
+            len(s.get("missing_ingredients", [])),
+            s["time_fit"],
+            s["skill_fit"],
+        )
+
+    buddy_suggestions.sort(
+        key=lambda s: (
+            -s.get("ranking_score", 0),
+            -s.get("match_score", 0),
+            len(s.get("missing_ingredients", [])),
+        )
+    )
+
+    # Persist suggestions in Firestore subcollection
+    all_suggestions = saved_suggestions + buddy_suggestions
+    for suggestion in all_suggestions:
+        await (
+            db.collection("inventory_scans")
+            .document(scan_id)
+            .collection("suggestions")
+            .document(suggestion["suggestion_id"])
+            .set(suggestion)
+        )
+
+    return {
+        "scan_id": scan_id,
+        "from_saved": saved_suggestions,
+        "buddy_recipes": buddy_suggestions,
+        "total_suggestions": len(all_suggestions),
+    }
