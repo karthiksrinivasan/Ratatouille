@@ -114,9 +114,10 @@ def test_recipe_suggestion_schema():
 
 
 def test_cooking_process_schema():
-    from app.models.process import CookingProcess
+    from app.models.process import Process
 
-    p = CookingProcess(name="Boiling pasta")
+    p = Process(session_id="s1", name="Boiling pasta", step_number=3)
     assert p.state == "pending"
-    assert p.priority == 0
+    assert p.priority == "P2"
     assert p.buddy_managed is False
+    assert p.process_id  # auto-generated
