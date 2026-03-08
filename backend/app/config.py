@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     gcp_project_id: str = ""
     gcp_region: str = "us-central1"
     gcs_bucket_name: str = ""
+    firebase_project_id: str = ""
     environment: str = "development"
 
     class Config:

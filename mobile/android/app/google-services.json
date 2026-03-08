@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "296028055630",
+    "project_id": "endless-air-489607-d8-67d7c",
+    "storage_bucket": "endless-air-489607-d8-67d7c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:296028055630:android:07ced4b74513e3366efb1f",
+        "android_client_info": {
+          "package_name": "com.example.ratatouille"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA-TYx5QSVqRLzHnq6eq7x9JiWnkyh5OP0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

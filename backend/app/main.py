@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import firebase_admin
+from firebase_admin import credentials
+
+from app.config import settings
 
 app = FastAPI(title="Ratatouille API", version="0.1.0")
 
@@ -13,7 +16,10 @@ app.add_middleware(
 )
 
 # Initialize Firebase Admin SDK once
-firebase_admin.initialize_app()
+_firebase_opts = {}
+if settings.firebase_project_id:
+    _firebase_opts["projectId"] = settings.firebase_project_id
+firebase_admin.initialize_app(options=_firebase_opts)
 
 
 @app.get("/health")

@@ -33,7 +33,7 @@ Future<void> main() async {
   runApp(
     MultiProvider(
       providers: [
-        Provider<AuthService>.value(value: authService),
+        ChangeNotifierProvider<AuthService>.value(value: authService),
         Provider<ApiClient>.value(value: apiClient),
         ChangeNotifierProvider<RecipeProvider>(
           create: (_) => RecipeProvider(apiClient: apiClient),
