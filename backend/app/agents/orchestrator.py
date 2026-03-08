@@ -210,7 +210,11 @@ class SessionOrchestrator:
         summary = await self.handle_voice_query(
             f"Briefly summarize what you were saying: {interrupted}"
         )
-        return summary
+        return {
+            "type": "buddy_response",
+            "text": summary["text"],
+            "step": summary.get("current_step"),
+        }
 
     def get_mode_state(self) -> dict:
         """Return current mode state for client UI."""
@@ -269,6 +273,7 @@ async def create_session_orchestrator(session: dict, recipe: dict) -> SessionOrc
         "total_steps": len(recipe.get("steps", [])),
         "ambient_listen": session.get("mode_settings", {}).get("ambient_listen", False),
         "calibration_level": "standard",
+        "calibration_state": session.get("calibration_state", {}),
         "uid": session.get("uid", ""),
         "session_id": session.get("session_id", ""),
     }
