@@ -40,6 +40,24 @@ class RecipeFromURLRequest(BaseModel):
     url: str
 
 
+class IngredientCheck(BaseModel):
+    ingredient: str
+    has_it: bool
+
+
+class IngredientChecklist(BaseModel):
+    recipe_id: str
+    checks: list[IngredientCheck]
+    all_available: bool = False  # True when all checks are True
+
+    @property
+    def missing(self) -> list[str]:
+        return [c.ingredient for c in self.checks if not c.has_it]
+
+    def model_post_init(self, __context) -> None:
+        self.all_available = all(c.has_it for c in self.checks)
+
+
 class Recipe(RecipeCreate):
     recipe_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     uid: str = ""  # Owner user ID
