@@ -1,5 +1,6 @@
 .epic-state/
 .epic-logs/
 .epic-venv/
+.epic-worktrees/
 .env
 .venv/
