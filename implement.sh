@@ -50,6 +50,13 @@ fi
 
 mkdir -p "$STATE_DIR" "$LOG_DIR"
 
+# Detect line-buffering tool (stdbuf on Linux/homebrew, fall back to cat)
+if command -v stdbuf &>/dev/null; then
+    LINEBUF="stdbuf -oL"
+else
+    LINEBUF=""  # no unbuffering available, tee will block-buffer to file
+fi
+
 ###############################################################################
 # Helpers
 ###############################################################################
@@ -161,6 +168,8 @@ preflight() {
 # Build / smoke check — verifies the backend can import after an epic
 ###############################################################################
 
+BUILD_ERROR_FILE="${STATE_DIR}/build_error.txt"
+
 run_build_check() {
     local epic_num=$1
 
@@ -186,27 +195,105 @@ run_build_check() {
         }
     fi
 
-    # Install deps quietly
-    (
+    # Install deps — capture errors
+    local pip_output
+    pip_output=$(
         source "${venv_dir}/bin/activate"
         cd "${PROJECT_ROOT}/backend"
-        pip install -r requirements.txt -q 2>&1 | tail -1
+        pip install -r requirements.txt 2>&1
     ) || {
+        echo "pip install failed:"$'\n'"$pip_output" > "$BUILD_ERROR_FILE"
         log "WARNING: pip install failed — dependency issue detected"
         return 1
     }
 
-    # Try importing the app
-    (
+    # Try importing the app — capture full traceback
+    local import_output
+    import_output=$(
         source "${venv_dir}/bin/activate"
         cd "${PROJECT_ROOT}/backend"
         python -c "from app.main import app; print('Smoke check: app imports OK')" 2>&1
     ) || {
+        echo "App import failed:"$'\n'"$import_output" > "$BUILD_ERROR_FILE"
         log "ERROR: app import failed after Epic ${epic_num} — broken imports detected"
         return 1
     }
 
     log "Build check passed."
+    rm -f "$BUILD_ERROR_FILE"
+    return 0
+}
+
+###############################################################################
+# Build fix agent — triggered when build/smoke check fails
+# Spawns a focused Claude session with the exact error output to fix it.
+###############################################################################
+
+MAX_FIX_ATTEMPTS=3
+
+run_build_fix() {
+    local epic_num=$1
+    local attempt=$2
+    local log_file="${LOG_DIR}/epic-${epic_num}-buildfix-${attempt}-${TIMESTAMP}.log"
+
+    if [[ ! -f "$BUILD_ERROR_FILE" ]]; then
+        log "No build error file found — nothing to fix"
+        return 1
+    fi
+
+    local error_output
+    error_output=$(cat "$BUILD_ERROR_FILE")
+
+    log "Spawning build-fix agent (attempt ${attempt}/${MAX_FIX_ATTEMPTS})..."
+    log "Log: ${log_file}"
+
+    local prompt
+    read -r -d '' prompt <<FIXPROMPT || true
+You are a build-fix agent for the Ratatouille hackathon project.
+The build/smoke check failed after implementing Epic ${epic_num}.
+Your ONLY job is to fix the build so that the app imports cleanly.
+
+THE ERROR:
+${error_output}
+
+INSTRUCTIONS:
+1. Read the error carefully. Identify the root cause.
+2. Common causes:
+   - Missing __init__.py files in packages
+   - Circular imports between modules
+   - Importing a module that doesn't exist yet (typo or not created)
+   - Missing dependencies in requirements.txt
+   - Syntax errors
+   - Incompatible function signatures (sync vs async)
+   - Import of a name that doesn't exist in the target module
+3. Fix the issue using the Edit or Write tool.
+4. After fixing, verify by running:
+     cd backend && python3 -c "from app.main import app; print('Import OK')"
+5. If that still fails, read the NEW error and fix that too. Keep going until it passes.
+6. Once the import succeeds, stage and commit your fix:
+     git add <specific files>
+     git commit -m "fix(epic-${epic_num}): fix build — <what you fixed>"
+7. Do NOT refactor, do NOT improve code, do NOT touch anything unrelated to the build error.
+   Minimal, targeted fixes only.
+FIXPROMPT
+
+    local prompt_file="${log_file}.prompt.txt"
+    echo "$prompt" > "$prompt_file"
+
+    $LINEBUF claude -p \
+        --model "$MODEL" \
+        --permission-mode bypassPermissions \
+        --verbose \
+        "$(cat "$prompt_file")" \
+        < /dev/null 2>&1 | $LINEBUF tee "$log_file"
+
+    local exit_code=${PIPESTATUS[0]}
+
+    if [[ $exit_code -ne 0 ]]; then
+        log "WARNING: Build-fix agent exited with code ${exit_code}"
+        return 1
+    fi
+
     return 0
 }
 
@@ -324,9 +411,10 @@ build_validation_prompt() {
     local epic_num=$1
 
     cat <<VALIDATION_PROMPT
-You are a code reviewer validating the implementation of Epic ${epic_num} for the Ratatouille hackathon project.
+You are a code reviewer AND fixer validating Epic ${epic_num} for the Ratatouille hackathon project.
+Your job is NOT just to report issues — you MUST fix every issue you find.
 
-YOUR TASK:
+PHASE 1 — AUDIT:
 1. Read the epic specification: epics/$(get_epic_filename "$epic_num")
 2. Read the project conventions: CLAUDE.md and epics/index.md
 3. Explore the codebase to find all files created/modified for this epic.
@@ -338,49 +426,60 @@ YOUR TASK:
    - Deviations from the specified data models
    - Security issues (missing auth, exposed secrets)
    - Convention violations (sync instead of async, missing Pydantic models, etc.)
+   - Missing __init__.py files
+   - Async Gemini calls (must use gemini_client.aio or asyncio.to_thread)
 
-SMOKE TEST — CRITICAL:
-Run the following command to verify the backend can import without errors:
+PHASE 2 — SMOKE TEST:
+Run the following to verify the backend can import without errors:
   cd backend && python3 -c "from app.main import app; print('Import OK')"
 
-If the import fails, diagnose and fix the root cause (missing __init__.py, circular imports,
-bad imports, missing dependencies in requirements.txt, etc.) before continuing validation.
+If the import fails, FIX the root cause immediately (missing __init__.py, circular imports,
+bad imports, missing dependencies in requirements.txt, etc.).
 
-If specific modules were added by this epic, also test importing them individually:
+Also test each module added by this epic individually:
   python3 -c "from app.routers.X import router"
   python3 -c "from app.models.X import SomeModel"
+  python3 -c "from app.services.X import something"
   python3 -c "from app.agents.X import SomeAgent"
 
-OUTPUT FORMAT:
-Produce a structured report:
+PHASE 3 — FIX EVERYTHING:
+This is the most important phase. For EVERY issue found in Phase 1 and Phase 2:
+  1. Fix it using the Edit tool (or Write tool if a file is missing entirely).
+  2. Re-run the relevant smoke test to confirm the fix works.
+  3. Continue to the next issue.
+
+Do NOT just list issues and move on. Do NOT produce a report without fixing.
+You are the last line of defense before the next epic builds on top of this one.
+
+After all fixes are applied:
+  - Re-run the full smoke test: cd backend && python3 -c "from app.main import app; print('Import OK')"
+  - Stage all fixed files (specific files only, not git add -A)
+  - Commit: fix(epic-${epic_num}): address validation findings
+  - If there were no issues, do not create an empty commit.
+
+PHASE 4 — REPORT:
+After fixing, produce a final structured report:
 
 ## Epic ${epic_num} Validation Report
 
 ### Status: PASS | FAIL | PARTIAL
 
 ### Smoke Test: PASS | FAIL
-(include the actual output)
+(include the actual output from AFTER fixes)
 
 ### Task Checklist:
 - [ ] Task X.Y: description — PASS/FAIL (details)
 
-### Issues Found:
-1. [SEVERITY] Description of issue + file:line
-   Fix: What needs to change
+### Issues Found and Fixed:
+1. [SEVERITY] Description of issue + file:line — FIXED / UNABLE TO FIX (reason)
 
-### Missing Items:
-- List anything from acceptance criteria not yet implemented
+### Remaining Issues (if any):
+- Only list things you genuinely could not fix
 
-If status is FAIL or PARTIAL, fix the issues you found. Use the Edit tool to make corrections.
-After fixing, re-run the smoke test to confirm the fix works.
-Then re-verify the acceptance criteria.
-
-COMMIT VERIFICATION:
+### Commit Verification:
 Run "git log --oneline" and verify there is a separate commit for each task in this epic.
 Expected pattern: "feat(epic-${epic_num}): task N.M — ..."
-If tasks were batched into a single commit, note this in the report but do not attempt to rewrite history.
-
-Commit any fixes with a message like "fix(epic-${epic_num}): address validation findings"
+If tasks were batched into a single commit, note this but do not rewrite history.
 VALIDATION_PROMPT
 }
 
@@ -407,12 +506,18 @@ run_implementation() {
 
     local start_time=$SECONDS
 
-    claude -p \
+    # Write prompt to a temp file to avoid ARG_MAX issues with large prompts
+    local prompt_file="${log_file}.prompt.txt"
+    echo "$prompt" > "$prompt_file"
+
+    # Use stdbuf to disable output buffering so tee writes to log in real-time.
+    # Pipe stdin from /dev/null to ensure no interactive prompts.
+    $LINEBUF claude -p \
         --model "$MODEL" \
         --permission-mode bypassPermissions \
         --verbose \
-        "$prompt" \
-        2>&1 | tee "$log_file"
+        "$(cat "$prompt_file")" \
+        < /dev/null 2>&1 | $LINEBUF tee "$log_file"
 
     local exit_code=${PIPESTATUS[0]}
     local elapsed=$(( SECONDS - start_time ))
@@ -489,12 +594,15 @@ run_validation() {
 
     local start_time=$SECONDS
 
-    claude -p \
+    local prompt_file="${log_file}.prompt.txt"
+    echo "$prompt" > "$prompt_file"
+
+    $LINEBUF claude -p \
         --model "$MODEL" \
         --permission-mode bypassPermissions \
         --verbose \
-        "$prompt" \
-        2>&1 | tee "$log_file"
+        "$(cat "$prompt_file")" \
+        < /dev/null 2>&1 | $LINEBUF tee "$log_file"
 
     local exit_code=${PIPESTATUS[0]}
     local elapsed=$(( SECONDS - start_time ))
@@ -541,6 +649,31 @@ main() {
 
     if $DRY_RUN; then
         log "[DRY RUN MODE — no changes will be made]"
+        echo ""
+    fi
+
+    # Pre-resume build check: verify the codebase is healthy before starting
+    if ! $DRY_RUN && [[ $FROM_EPIC -gt 1 || -n "$FROM_TASK" ]]; then
+        log "Running pre-resume build check to verify existing code is healthy..."
+        if ! run_build_check "pre-resume"; then
+            log "WARNING: Existing codebase has build errors. Spawning build-fix agent..."
+            local fix_attempt=1
+            while [[ $fix_attempt -le $MAX_FIX_ATTEMPTS ]]; do
+                run_build_fix "pre-resume" "$fix_attempt" || true
+                if run_build_check "pre-resume"; then
+                    log "Pre-resume build fixed on attempt ${fix_attempt}."
+                    break
+                fi
+                fix_attempt=$((fix_attempt + 1))
+            done
+            if [[ $fix_attempt -gt $MAX_FIX_ATTEMPTS ]]; then
+                log "FATAL: Cannot fix existing build errors after ${MAX_FIX_ATTEMPTS} attempts."
+                log "Fix manually before resuming."
+                exit 1
+            fi
+        else
+            log "Pre-resume build check passed."
+        fi
         echo ""
     fi
 
@@ -595,11 +728,22 @@ main() {
             log "Epic ${epic_num} already implemented. Skipping to validation."
         fi
 
-        # Phase 1.5: Build check (between implementation and validation)
+        # Phase 1.5: Build check → fix loop (between implementation and validation)
         if ! $DRY_RUN; then
             if ! run_build_check "$epic_num"; then
-                log "ERROR: Build check failed after Epic ${epic_num}."
-                log "The validation pass will attempt to fix this."
+                log "Build check failed after implementation. Spawning build-fix agent..."
+                local fix_attempt=1
+                while [[ $fix_attempt -le $MAX_FIX_ATTEMPTS ]]; do
+                    run_build_fix "$epic_num" "$fix_attempt" || true
+                    if run_build_check "$epic_num"; then
+                        log "Build fixed on attempt ${fix_attempt}."
+                        break
+                    fi
+                    fix_attempt=$((fix_attempt + 1))
+                done
+                if [[ $fix_attempt -gt $MAX_FIX_ATTEMPTS ]]; then
+                    log "WARNING: Build still broken after ${MAX_FIX_ATTEMPTS} fix attempts. Validation will try next."
+                fi
             fi
         fi
 
@@ -609,12 +753,24 @@ main() {
             log "Continuing to next epic (validation fixes were attempted)."
         fi
 
-        # Phase 2.5: Post-validation build check
+        # Phase 2.5: Post-validation build check → fix loop
         if ! $DRY_RUN; then
             if ! run_build_check "$epic_num"; then
-                log "FATAL: Build check STILL failing after validation of Epic ${epic_num}."
-                log "Manual intervention required. Stopping."
-                exit 1
+                log "Build check failed after validation. Spawning build-fix agent..."
+                local fix_attempt=1
+                while [[ $fix_attempt -le $MAX_FIX_ATTEMPTS ]]; do
+                    run_build_fix "$epic_num" "$fix_attempt" || true
+                    if run_build_check "$epic_num"; then
+                        log "Build fixed on attempt ${fix_attempt}."
+                        break
+                    fi
+                    fix_attempt=$((fix_attempt + 1))
+                done
+                if [[ $fix_attempt -gt $MAX_FIX_ATTEMPTS ]]; then
+                    log "FATAL: Build STILL failing after validation + ${MAX_FIX_ATTEMPTS} fix attempts for Epic ${epic_num}."
+                    log "Manual intervention required. Stopping."
+                    exit 1
+                fi
             fi
         fi
 
