@@ -257,10 +257,11 @@ void main() {
 
       // Verify context was sent
       expect(capturedBody, isNotNull);
-      expect(capturedBody!['mode'], 'freestyle');
-      expect(capturedBody!['goal'], 'Quick pasta dish');
-      expect(capturedBody!['ingredients_hint'], 'garlic, pasta, olive oil');
-      expect(capturedBody!['time_estimate'], '30 min');
+      expect(capturedBody!['session_mode'], 'freestyle');
+      final ctx = capturedBody!['freestyle_context'] as Map<String, dynamic>;
+      expect(ctx['dish_goal'], 'Quick pasta dish');
+      expect(ctx['available_ingredients'], ['garlic', 'pasta', 'olive oil']);
+      expect(ctx['time_budget_minutes'], 30);
     });
 
     testWidgets('skip mode sends only mode field', (tester) async {
@@ -309,12 +310,10 @@ void main() {
       await tester.tap(find.text('Skip & Start Cooking'));
       await tester.pumpAndSettle();
 
-      // Only mode sent
+      // Only session_mode sent, no freestyle_context
       expect(capturedBody, isNotNull);
-      expect(capturedBody!['mode'], 'freestyle');
-      expect(capturedBody!.containsKey('goal'), false);
-      expect(capturedBody!.containsKey('ingredients_hint'), false);
-      expect(capturedBody!.containsKey('time_estimate'), false);
+      expect(capturedBody!['session_mode'], 'freestyle');
+      expect(capturedBody!.containsKey('freestyle_context'), false);
     });
   });
 

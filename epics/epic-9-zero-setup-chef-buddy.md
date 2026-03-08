@@ -2,7 +2,7 @@
 
 ## Goal
 
-Let users launch directly into a live cooking session with no saved recipe and no mandatory setup. A first-time user should be able to open Ratatouille, tap `Cook Now`, and get practical, stepwise coaching from the buddy in under 30 seconds.
+Let users launch directly into a live cooking session with no saved recipe and no mandatory setup. A first-time user should be able to open Ratatouille, tap `Cook Now`, and get practical, stepwise coaching from the buddy in under 30 seconds. Session-critical interactions are voice/video-first from the first second, with no keyboard entry required.
 
 ## Prerequisites
 
@@ -19,6 +19,7 @@ Changes owned by Epic 9:
 - Epic 5 artifact updates: dynamic process/timer initialization for no-recipe sessions (Task 9.6)
 - Epic 6 artifact updates (if needed): reuse vision/taste/recovery endpoints in freestyle mode without recipe-bound assumptions (Tasks 9.5, 9.8)
 - Epic 3 + Epic 4 artifact updates: fridge/pantry live browse video chat path for in-session ingredient discovery (Task 9.11)
+- Epic 8 artifact updates: remove mandatory text-entry interaction from live cooking paths and default to voice/video call UX (Tasks 9.7, 9.12)
 
 ## PRD References
 
@@ -40,6 +41,16 @@ Changes owned by Epic 9:
 
 ---
 
+## Interaction Mandate (Voice/Video-First, No Keyboard)
+
+- Live cooking flows must enter conversational mode immediately (voice chat or video chat with voice).
+- No keyboard-required steps in session setup, live guidance, process handling, or recovery.
+- UI controls remain minimal and call-like: mute/unmute, camera on/off, end session, reconnect.
+- Text rendering is optional transcript only; typed response paths (for example `Type Instead`) are not primary interaction in Epic 9 flows.
+- Explicit exception: non-live authoring flows may keep text input where necessary (for example recipe URL import).
+
+---
+
 ## Data Model Deltas
 
 ### Session model extension (`app/models/session.py`)
@@ -57,6 +68,8 @@ class FreestyleContext(BaseModel):
 
 class SessionCreate(BaseModel):
     session_mode: str = "recipe_guided"         # recipe_guided | freestyle
+    interaction_mode: str = "voice_video_call"  # voice_video_call | voice_only
+    allow_text_input: bool = False
     recipe_id: Optional[str] = None
     mode_settings: Optional[ModeSettings] = None
     freestyle_context: Optional[FreestyleContext] = None
@@ -65,6 +78,7 @@ class SessionCreate(BaseModel):
 Validation rule:
 - `session_mode == "recipe_guided"` requires `recipe_id`
 - `session_mode == "freestyle"` does not require saved recipes
+- `allow_text_input` defaults to `False` for Epic 9 session flows
 
 ---
 
@@ -81,6 +95,7 @@ Validation rule:
 **Acceptance Criteria:**
 - [ ] User can enter freestyle mode in 1 tap from home
 - [ ] No account content prerequisites (saved recipe/inventory) block entry
+- [ ] Session enters live voice channel immediately after entry (no form typing step)
 - [ ] Entry event logged for analytics (`zero_setup_entry_tapped`)
 
 ---
@@ -104,6 +119,8 @@ async def create_session(body: SessionCreate, user: dict = Depends(get_current_u
     return await create_session_record(
         uid=user["uid"],
         session_mode=body.session_mode,
+        interaction_mode=body.interaction_mode,
+        allow_text_input=body.allow_text_input,
         recipe_id=body.recipe_id,
         mode_settings=(body.mode_settings or ModeSettings()).model_dump(),
         freestyle_context=(body.freestyle_context.model_dump() if body.freestyle_context else {}),
@@ -114,6 +131,7 @@ async def create_session(body: SessionCreate, user: dict = Depends(get_current_u
 - [ ] `recipe_guided` validation behavior preserved
 - [ ] `freestyle` creation succeeds without `recipe_id`
 - [ ] Session record persists `session_mode` and `freestyle_context`
+- [ ] Session record persists `interaction_mode` and `allow_text_input=false`
 - [ ] Existing scan/suggestion start-session flow remains backward compatible
 
 ---
@@ -124,13 +142,14 @@ async def create_session(body: SessionCreate, user: dict = Depends(get_current_u
 
 **Freestyle activation behavior:**
 - Generate a short initial plan (2-4 concrete steps)
-- Ask at most 1-2 clarification questions if needed
+- Ask at most 1-2 clarification questions via voice if needed
 - Initialize process/timer state from inferred plan
 
 **Acceptance Criteria:**
 - [ ] Activation works when `recipe_id` is null and `session_mode == "freestyle"`
 - [ ] Response includes an initial plan payload suitable for mobile rendering
 - [ ] User hears/reads first actionable instruction immediately after activation
+- [ ] No keyboard prompt is required to proceed past activation
 
 ---
 
@@ -157,13 +176,14 @@ async def create_session(body: SessionCreate, user: dict = Depends(get_current_u
 
 **Supported inputs:**
 - Voice: "I have eggs, spinach, and cheese"
-- Quick chips: time budget, equipment, dietary constraints
+- Voice follow-ups for time budget, equipment, dietary constraints
 - Optional camera check for doneness verification
 
 **Acceptance Criteria:**
 - [ ] Context updates can be applied mid-session with no restart
 - [ ] Updated context changes subsequent guidance decisions
 - [ ] Missing context never blocks continuation
+- [ ] Context capture works without any text field or keyboard usage
 
 ---
 
@@ -178,18 +198,18 @@ async def create_session(body: SessionCreate, user: dict = Depends(get_current_u
 
 ---
 
-### 9.7 Mobile UX: Fast Start + Low Friction
+### 9.7 Mobile UX: Call-Like Start From First Second
 
-**What:** Define mobile UX for zero-setup flow with minimal typing and no dead ends.
+**What:** Define mobile UX for zero-setup flow as a direct voice/video call experience.
 
 **Required flow:**
 1. Home -> tap `Cook Now (Seasoned Chef Buddy)`
-2. Optional quick context sheet (all fields skippable)
-3. Enter live session immediately
+2. App opens live voice call UI immediately (camera optional but one-tap)
+3. Buddy asks verbal onboarding question(s) instead of showing text forms
 
 **Acceptance Criteria:**
-- [ ] User reaches live session in <= 2 taps from home (if skipping context)
-- [ ] Quick context sheet has explicit `Skip for now`
+- [ ] User reaches active conversational mode in <= 2 taps from home
+- [ ] No keyboard appears in Epic 9 happy-path session flow
 - [ ] All loading/error states provide retry and back paths
 
 ---
@@ -252,8 +272,8 @@ async def create_session(body: SessionCreate, user: dict = Depends(get_current_u
 
 **Required UX flow:**
 1. User enters `Cook from Fridge or Pantry`.
-2. User chooses `Live Browse with Buddy` (instead of only photo/video upload).
-3. App opens live session camera + voice channel and streams frames/events.
+2. App opens live video call with buddy immediately and asks by voice: "Fridge or pantry first?"
+3. User responds by voice; app streams frames/events continuously.
 4. Buddy narrates findings, asks concise clarification questions, and builds ingredient list progressively.
 5. User can continue to:
    - Recipe suggestions flow, or
@@ -272,9 +292,34 @@ async def create_session(body: SessionCreate, user: dict = Depends(get_current_u
 **Acceptance Criteria:**
 - [ ] User can start live browse from both fridge and pantry entry points
 - [ ] Agent can process sequential frames and update ingredient candidates incrementally
-- [ ] Buddy output is multimodal in real time (voice/text + ingredient list updates)
+- [ ] Buddy output is multimodal in real time (voice-first with optional transcript + ingredient list updates)
 - [ ] User can convert browse results into either suggestions or freestyle session without re-entry
 - [ ] Fallback exists when video quality is poor (ask for still capture or verbal confirmation)
+- [ ] No text-entry control is required during browse flow
+
+---
+
+### 9.12 Retroactive Text-Input Audit and Voice/Video Migration
+
+**What:** Retroactively scan current implementation for text input in session-critical paths and migrate those interactions to voice/video-first behavior.
+
+**Scope of audit:**
+- Mobile screens and controls in zero-setup, scan handoff, live session, process/recovery flows
+- Backend endpoints/events that assume typed input for session progression
+- UI affordances such as `Type Instead`, text prompts, or keyboard-triggering controls
+
+**Deliverables:**
+- Audit matrix of all text inputs with classification:
+  - `Keep` (allowed exception like recipe URL import)
+  - `Replace` (must become voice/video interaction)
+  - `Optional` (non-blocking transcript/search utilities outside live flow)
+- Migration patch list with owner and acceptance criteria per item
+
+**Acceptance Criteria:**
+- [ ] All mandatory keyboard paths are removed from Epic 9 session-critical journeys
+- [ ] `Type Instead` is removed from default live-session CTA row (or hidden behind explicit fallback)
+- [ ] Exceptions are documented with rationale (for example URL import field)
+- [ ] Regression checklist verifies users can complete full session using only voice/video interactions
 
 ---
 
@@ -291,3 +336,4 @@ async def create_session(body: SessionCreate, user: dict = Depends(get_current_u
 - [ ] Metrics captured for zero-setup funnel and latency
 - [ ] Demo script includes zero-setup proof path
 - [ ] Fridge/pantry live browse video chat works and transitions cleanly to suggestions or freestyle
+- [ ] Retroactive text-input audit complete and all mandatory session keyboard interactions removed

@@ -8,9 +8,7 @@
 #
 # Prerequisites:
 #   - gcloud CLI installed and authenticated (`gcloud auth login`)
-#   - Docker OR gcloud builds submit (Cloud Build) available
-#   - Artifact Registry repo created (script can create it)
-#   - Service account exists (script can create it)
+#   - Sufficient IAM permissions on the GCP project
 
 set -euo pipefail
 
@@ -18,8 +16,6 @@ set -euo pipefail
 
 REGION="${REGION:-us-central1}"
 SERVICE_NAME="${SERVICE_NAME:-ratatouille-api}"
-REPO_NAME="${REPO_NAME:-ratatouille}"
-IMAGE_NAME="${IMAGE_NAME:-ratatouille-backend}"
 SA_NAME="${SA_NAME:-ratatouille-runner}"
 MEMORY="${MEMORY:-1Gi}"
 MIN_INSTANCES="${MIN_INSTANCES:-0}"
@@ -57,7 +53,7 @@ if [[ -z "${PROJECT_ID:-}" ]]; then
 fi
 
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
-IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/${IMAGE_NAME}"
+PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)' 2>/dev/null || true)"
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -79,97 +75,101 @@ check_command() {
 check_command gcloud
 
 echo ""
-echo "╔══════════════════════════════════════════════╗"
-echo "║  Ratatouille Backend — Cloud Run Deploy      ║"
-echo "╠══════════════════════════════════════════════╣"
-echo "║  Project:   $PROJECT_ID"
-echo "║  Region:    $REGION"
-echo "║  Service:   $SERVICE_NAME"
-echo "║  Image:     $IMAGE_URI"
-echo "║  SA:        $SA_EMAIL"
-echo "║  Memory:    $MEMORY"
-echo "║  Instances: ${MIN_INSTANCES}-${MAX_INSTANCES}"
-echo "╚══════════════════════════════════════════════╝"
+echo "======================================================"
+echo "  Ratatouille Backend -- Cloud Run Deploy"
+echo "======================================================"
+echo "  Project:   ${PROJECT_ID} (#${PROJECT_NUMBER:-?})"
+echo "  Region:    ${REGION}"
+echo "  Service:   ${SERVICE_NAME}"
+echo "  SA:        ${SA_EMAIL}"
+echo "  Memory:    ${MEMORY}"
+echo "  Instances: ${MIN_INSTANCES}-${MAX_INSTANCES}"
+echo "======================================================"
 echo ""
 
 # ─── Step 1: Enable required APIs ────────────────────────────────────────────
 
-echo "▸ Enabling required APIs..."
+echo "[1/5] Enabling required APIs..."
 run gcloud services enable \
   run.googleapis.com \
-  artifactregistry.googleapis.com \
   cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
   firestore.googleapis.com \
   storage.googleapis.com \
   aiplatform.googleapis.com \
   --project="$PROJECT_ID" --quiet
 
-# ─── Step 2: Create Artifact Registry repo (idempotent) ──────────────────────
+# ─── Step 2: Fix Cloud Build IAM permissions ─────────────────────────────────
 
-echo "▸ Ensuring Artifact Registry repo exists..."
-if ! gcloud artifacts repositories describe "$REPO_NAME" \
-    --location="$REGION" --project="$PROJECT_ID" &>/dev/null; then
-  run gcloud artifacts repositories create "$REPO_NAME" \
-    --repository-format=docker \
-    --location="$REGION" \
-    --project="$PROJECT_ID" \
-    --description="Ratatouille container images"
+echo "[2/5] Granting Cloud Build storage permissions..."
+if [[ -n "$PROJECT_NUMBER" ]]; then
+  COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+  CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
+
+  # The default Compute Engine SA needs storage access for Cloud Build
+  for sa in "$COMPUTE_SA" "$CB_SA"; do
+    for role in roles/storage.admin roles/artifactregistry.writer roles/cloudbuild.builds.builder; do
+      run gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+        --member="serviceAccount:${sa}" \
+        --role="$role" \
+        --condition=None \
+        --quiet 2>/dev/null || true
+    done
+  done
+  echo "  Permissions granted."
 else
-  echo "  (repo already exists)"
+  echo "  WARNING: Could not resolve project number. Skipping IAM fix."
+  echo "  If Cloud Build fails, manually run:"
+  echo "    gcloud projects add-iam-policy-binding $PROJECT_ID \\"
+  echo "      --member='serviceAccount:<PROJECT_NUMBER>-compute@developer.gserviceaccount.com' \\"
+  echo "      --role='roles/storage.admin'"
 fi
 
-# ─── Step 3: Create service account (idempotent) ─────────────────────────────
+# ─── Step 3: Create Cloud Run service account (idempotent) ───────────────────
 
-echo "▸ Ensuring service account exists..."
+echo "[3/5] Ensuring service account exists..."
 if ! gcloud iam service-accounts describe "$SA_EMAIL" \
     --project="$PROJECT_ID" &>/dev/null 2>&1; then
   run gcloud iam service-accounts create "$SA_NAME" \
     --display-name="Ratatouille Cloud Run runner" \
     --project="$PROJECT_ID"
 
-  # Grant required roles
   for role in \
     roles/datastore.user \
     roles/storage.objectAdmin \
-    roles/aiplatform.user \
-    roles/firebase.sdkAdminServiceAgent; do
+    roles/aiplatform.user; do
     run gcloud projects add-iam-policy-binding "$PROJECT_ID" \
       --member="serviceAccount:$SA_EMAIL" \
       --role="$role" \
+      --condition=None \
       --quiet
   done
 else
-  echo "  (service account already exists)"
+  echo "  (already exists)"
 fi
 
 # ─── Step 4: Create GCS media bucket (idempotent) ────────────────────────────
 
 BUCKET_NAME="${PROJECT_ID}-media"
-echo "▸ Ensuring GCS bucket gs://${BUCKET_NAME} exists..."
+echo "[4/5] Ensuring GCS bucket gs://${BUCKET_NAME} exists..."
 if ! gcloud storage buckets describe "gs://${BUCKET_NAME}" --project="$PROJECT_ID" &>/dev/null 2>&1; then
   run gcloud storage buckets create "gs://${BUCKET_NAME}" \
     --location="$REGION" \
     --project="$PROJECT_ID" \
     --uniform-bucket-level-access
 else
-  echo "  (bucket already exists)"
+  echo "  (already exists)"
 fi
 
-# ─── Step 5: Build and push image via Cloud Build ────────────────────────────
+# ─── Step 5: Build + Deploy to Cloud Run (source-based) ─────────────────────
 
 BACKEND_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "▸ Building and pushing container image via Cloud Build..."
-run gcloud builds submit "$BACKEND_DIR" \
-  --tag="$IMAGE_URI" \
-  --project="$PROJECT_ID" \
-  --quiet
-
-# ─── Step 6: Deploy to Cloud Run ─────────────────────────────────────────────
-
-echo "▸ Deploying to Cloud Run..."
+echo "[5/5] Building and deploying to Cloud Run (source deploy)..."
+# `gcloud run deploy --source` handles: Cloud Build, Artifact Registry, and deploy
+# in one command, avoiding manual image tagging and push permissions issues.
 run gcloud run deploy "$SERVICE_NAME" \
-  --image="$IMAGE_URI" \
+  --source="$BACKEND_DIR" \
   --region="$REGION" \
   --project="$PROJECT_ID" \
   --platform=managed \
@@ -188,23 +188,23 @@ FIREBASE_PROJECT_ID=${PROJECT_ID},\
 ENVIRONMENT=production" \
   --quiet
 
-# ─── Step 7: Print service URL ───────────────────────────────────────────────
+# ─── Done ─────────────────────────────────────────────────────────────────────
 
 echo ""
-echo "▸ Fetching service URL..."
+echo "Fetching service URL..."
 SERVICE_URL="$(gcloud run services describe "$SERVICE_NAME" \
   --region="$REGION" \
   --project="$PROJECT_ID" \
   --format='value(status.url)' 2>/dev/null || echo '(unknown)')"
 
 echo ""
-echo "══════════════════════════════════════════════════"
+echo "======================================================"
 echo "  Deploy complete!"
-echo "  URL: $SERVICE_URL"
+echo "  URL: ${SERVICE_URL}"
 echo "  Health: ${SERVICE_URL}/health"
-echo "══════════════════════════════════════════════════"
+echo "======================================================"
 echo ""
 echo "Next steps:"
-echo "  1. Update mobile .env with: BACKEND_URL=$SERVICE_URL"
+echo "  1. Update mobile .env: BACKEND_URL=${SERVICE_URL}"
 echo "  2. Test: curl ${SERVICE_URL}/health"
-echo "  3. View logs: gcloud run logs read $SERVICE_NAME --region=$REGION --project=$PROJECT_ID"
+echo "  3. Logs: gcloud run logs read ${SERVICE_NAME} --region=${REGION} --project=${PROJECT_ID}"
