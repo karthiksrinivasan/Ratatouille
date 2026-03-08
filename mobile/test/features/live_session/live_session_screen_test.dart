@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ratatouille/core/ws_client.dart';
@@ -55,6 +54,18 @@ class FakeWsClient extends ChangeNotifier implements WsClient {
 
   @override
   void sendVisionCheck(String frameUri) => send({'type': 'vision_check', 'frame_uri': frameUri});
+
+  @override
+  void sendProcessComplete(String processId) =>
+      send({'type': 'process_complete', 'process_id': processId});
+
+  @override
+  void sendProcessDelegate(String processId) =>
+      send({'type': 'process_delegate', 'process_id': processId});
+
+  @override
+  void sendConflictChoice(String processId) =>
+      send({'type': 'conflict_choice', 'chosen_process_id': processId});
 
   @override
   void sendPing() => send({'type': 'ping'});

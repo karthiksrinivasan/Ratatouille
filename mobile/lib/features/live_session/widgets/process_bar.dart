@@ -224,7 +224,7 @@ class _ProcessChip extends StatelessWidget {
       if (remaining != null) {
         final min = remaining ~/ 60;
         final sec = remaining % 60;
-        return '${process.name.split(':').last.trim().substring(0, (process.name.split(':').last.trim().length).clamp(0, 8))} ${min}:${sec.toString().padLeft(2, '0')}';
+        return '${process.name.split(':').last.trim().substring(0, (process.name.split(':').last.trim().length).clamp(0, 8))} $min:${sec.toString().padLeft(2, '0')}';
       }
     }
     final shortName = process.name.split(':').last.trim();
@@ -304,7 +304,7 @@ class _CountdownChip extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           Text(
-            '${min}:${sec.toString().padLeft(2, '0')}',
+            '$min:${sec.toString().padLeft(2, '0')}',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.bold,
