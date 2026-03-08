@@ -1,13 +1,67 @@
+import json
+import logging
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from google.cloud import firestore
 
 from app.auth.firebase import get_current_user
-from app.models.recipe import RecipeCreate, Recipe
+from app.models.recipe import RecipeCreate, Recipe, RecipeStep
 from app.services.firestore import db
+from app.services.gemini import gemini_client, MODEL_FLASH
 
-import uuid
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+KNOWN_TECHNIQUE_TAGS = {
+    "saute", "boil", "simmer", "roast", "grill", "bake", "fry", "deep-fry",
+    "steam", "blanch", "braise", "deglaze", "reduce", "emulsify", "fold",
+    "knead", "proof", "caramelize", "sear", "poach", "julienne", "dice",
+    "mince", "chiffonade", "temper", "slice",
+}
+
+
+async def extract_technique_tags(steps: list[RecipeStep]) -> list[RecipeStep]:
+    """Use Gemini to extract cooking technique tags from step instructions."""
+    # Only process steps that don't already have tags
+    needs_tags = [s for s in steps if not s.technique_tags]
+    if not needs_tags:
+        return steps
+
+    steps_text = "\n".join(
+        f"Step {s.step_number}: {s.instruction}" for s in needs_tags
+    )
+
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model=MODEL_FLASH,
+            contents=f"""Extract cooking technique tags from each step.
+Return JSON array where each element has step_number and tags.
+Valid tags include: saute, boil, simmer, roast, grill, bake, fry, deep-fry,
+steam, blanch, braise, deglaze, reduce, emulsify, fold, knead, proof,
+caramelize, sear, poach, julienne, dice, mince, chiffonade, temper, slice.
+
+Steps:
+{steps_text}
+
+Return ONLY valid JSON.""",
+        )
+
+        tag_data = json.loads(response.text)
+        tag_map = {item["step_number"]: item["tags"] for item in tag_data}
+        for step in steps:
+            if not step.technique_tags and step.step_number in tag_map:
+                # Filter to known tags only
+                step.technique_tags = [
+                    t for t in tag_map[step.step_number]
+                    if t in KNOWN_TECHNIQUE_TAGS
+                ]
+    except (json.JSONDecodeError, KeyError, Exception) as e:
+        logger.warning("Technique tag extraction failed: %s", e)
+        # Graceful degradation — steps work without tags
+
+    return steps
 
 
 def _build_recipe_data(body: RecipeCreate, recipe_id: str, uid: str) -> dict:
@@ -38,6 +92,8 @@ def _build_recipe_data(body: RecipeCreate, recipe_id: str, uid: str) -> dict:
 @router.post("/recipes", response_model=Recipe)
 async def create_recipe(body: RecipeCreate, user: dict = Depends(get_current_user)):
     recipe_id = str(uuid.uuid4())
+    # Extract technique tags for steps that don't have them
+    body.steps = await extract_technique_tags(body.steps)
     recipe_data = _build_recipe_data(body, recipe_id, user["uid"])
     await db.collection("recipes").document(recipe_id).set(recipe_data)
     return recipe_data
