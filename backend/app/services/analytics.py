@@ -31,6 +31,13 @@ PRODUCT_EVENTS = {
     "user_override": "User says 'I know' or skips",
     "memory_confirmed": "User confirms preference memory",
     "memory_rejected": "User rejects preference memory",
+    # Epic 9 — zero-setup funnel events
+    "zero_setup_entry_tapped": "User taps Cook Now from home screen",
+    "zero_setup_session_created": "Freestyle session created via zero-setup",
+    "zero_setup_session_activated": "Freestyle session activated via zero-setup",
+    "zero_setup_session_completed": "Freestyle session completed",
+    "browse_started": "User starts fridge/pantry live browse",
+    "browse_completed": "User finishes live browse",
 }
 
 

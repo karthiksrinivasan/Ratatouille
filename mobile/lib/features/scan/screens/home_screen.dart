@@ -56,11 +56,11 @@ class HomeScreen extends StatelessWidget {
 
                   const SizedBox(height: Spacing.md),
 
-                  // Equal-priority — Cook Now (freestyle, no recipe needed)
+                  // Equal-priority — Cook Now (Seasoned Chef Buddy)
                   _EntryCard(
                     icon: Icons.mic_rounded,
-                    title: 'Cook Now',
-                    subtitle: 'No recipe needed — get live AI help instantly',
+                    title: 'Cook Now (Seasoned Chef Buddy)',
+                    subtitle: 'No recipe needed — get live voice coaching instantly',
                     onTap: () => context.go(AppRoutes.cookNow),
                     isPrimary: true,
                   ),
