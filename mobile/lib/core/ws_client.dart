@@ -27,6 +27,7 @@ class WsClient extends ChangeNotifier {
   Timer? _reconnectTimer;
   Timer? _heartbeatTimer;
   Timer? _pongTimeoutTimer;
+  bool _disposed = false;
   final Set<String> _processedEventIds = {};
   static const int _maxReconnectAttempts = 5;
   static const Duration _heartbeatInterval = Duration(seconds: 15);
@@ -133,7 +134,9 @@ class WsClient extends ChangeNotifier {
     _subscription = null;
     await _channel?.sink.close();
     _channel = null;
-    _setState(WsConnectionState.disconnected);
+    if (!_disposed) {
+      _setState(WsConnectionState.disconnected);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -330,9 +333,14 @@ class WsClient extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _stopHeartbeat();
     _reconnectTimer?.cancel();
-    disconnect();
+    _subscription?.cancel();
+    _subscription = null;
+    _channel?.sink.close();
+    _channel = null;
+    _currentSessionId = null;
     _messageController.close();
     super.dispose();
   }
