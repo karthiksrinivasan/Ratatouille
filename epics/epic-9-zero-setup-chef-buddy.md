@@ -18,6 +18,7 @@ Changes owned by Epic 9:
 - Epic 4 artifact updates: session create/activate/live contracts to support `freestyle` mode (Tasks 9.2, 9.3, 9.4)
 - Epic 5 artifact updates: dynamic process/timer initialization for no-recipe sessions (Task 9.6)
 - Epic 6 artifact updates (if needed): reuse vision/taste/recovery endpoints in freestyle mode without recipe-bound assumptions (Tasks 9.5, 9.8)
+- Epic 3 + Epic 4 artifact updates: fridge/pantry live browse video chat path for in-session ingredient discovery (Task 9.11)
 
 ## PRD References
 
@@ -25,6 +26,7 @@ Changes owned by Epic 9:
 - §7.2 Multimodal inputs (voice + optional camera)
 - §7.3 Multimodal outputs (voice/text + visual guidance)
 - §7.4 Voice modes and barge-in behavior
+- §7.10 Fridge/Pantry flow
 - §7.6 Calibration/adaptation behavior
 - §13 UX requirements for demo (fast entry, interruption handling)
 - §14.4 judging criteria (innovation + product UX quality)
@@ -242,6 +244,40 @@ async def create_session(body: SessionCreate, user: dict = Depends(get_current_u
 
 ---
 
+### 9.11 Fridge/Pantry Live Browse Video Chat
+
+**What:** Add a live video chat path where users can start in scan mode and let the agent browse fridge/pantry in real time during session setup or early live session.
+
+**Ownership note:** This task patches completed Epic 3 scan artifacts and Epic 4 WebSocket live artifacts under Epic 9 governance.
+
+**Required UX flow:**
+1. User enters `Cook from Fridge or Pantry`.
+2. User chooses `Live Browse with Buddy` (instead of only photo/video upload).
+3. App opens live session camera + voice channel and streams frames/events.
+4. Buddy narrates findings, asks concise clarification questions, and builds ingredient list progressively.
+5. User can continue to:
+   - Recipe suggestions flow, or
+   - Immediate freestyle cooking guidance.
+
+**Realtime contract additions (patch of existing WS contracts):**
+- Client events:
+  - `browse_start` (`source`: `fridge` | `pantry`)
+  - `browse_frame` (`frame_uri` or encoded frame payload)
+  - `browse_stop`
+- Server events:
+  - `browse_observation` (what the buddy sees + confidence)
+  - `ingredient_candidates` (incremental detected list + confidence tiers)
+  - `browse_question` (targeted clarification prompt)
+
+**Acceptance Criteria:**
+- [ ] User can start live browse from both fridge and pantry entry points
+- [ ] Agent can process sequential frames and update ingredient candidates incrementally
+- [ ] Buddy output is multimodal in real time (voice/text + ingredient list updates)
+- [ ] User can convert browse results into either suggestions or freestyle session without re-entry
+- [ ] Fallback exists when video quality is poor (ask for still capture or verbal confirmation)
+
+---
+
 ## Epic Completion Checklist
 
 - [ ] Zero-setup entry CTA available on home screen
@@ -254,3 +290,4 @@ async def create_session(body: SessionCreate, user: dict = Depends(get_current_u
 - [ ] Safety/confidence guardrails verified for no-recipe guidance
 - [ ] Metrics captured for zero-setup funnel and latency
 - [ ] Demo script includes zero-setup proof path
+- [ ] Fridge/pantry live browse video chat works and transitions cleanly to suggestions or freestyle

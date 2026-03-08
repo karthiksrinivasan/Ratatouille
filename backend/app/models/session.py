@@ -10,9 +10,19 @@ class ModeSettings(BaseModel):
     phone_position: str = "counter"   # "counter" | "mounted" | "held"
 
 
+class FreestyleContext(BaseModel):
+    dish_goal: Optional[str] = None
+    available_ingredients: list[str] = []
+    equipment: list[str] = []
+    time_budget_minutes: Optional[int] = None
+    skill_self_rating: Optional[str] = None  # beginner | intermediate | advanced
+
+
 class SessionCreate(BaseModel):
-    recipe_id: str
+    session_mode: str = "recipe_guided"  # recipe_guided | freestyle
+    recipe_id: Optional[str] = None
     mode_settings: Optional[ModeSettings] = None
+    freestyle_context: Optional[FreestyleContext] = None
 
 
 class Session(BaseModel):
@@ -20,9 +30,11 @@ class Session(BaseModel):
 
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     uid: str
-    recipe_id: str
+    session_mode: str = "recipe_guided"  # recipe_guided | freestyle
+    recipe_id: Optional[str] = None
     status: str = "created"  # created | active | paused | completed | abandoned
     mode_settings: ModeSettings = Field(default_factory=ModeSettings)
+    freestyle_context: Optional[FreestyleContext] = None
     current_step: int = 0
     calibration_state: dict = Field(default_factory=dict)
     started_at: Optional[datetime] = None

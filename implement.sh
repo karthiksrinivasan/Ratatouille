@@ -148,7 +148,37 @@ record_completed_tasks() {
     task_file=$(TASK_STATE_FILE "$epic_num")
     # Use --all to see commits across all branches (important for worktrees).
     # Use PROJECT_ROOT git dir so we always see the full history.
-    git -C "$PROJECT_ROOT" log --oneline --all | grep -oE "task ${epic_num}\.[0-9]+" | sed "s/task //" | sort -t. -k2 -n | uniq > "$task_file" 2>/dev/null || true
+    #
+    # Handles commit message formats:
+    #   task 7.1        → single task
+    #   tasks 7.1-7.3   → range (expands to 7.1, 7.2, 7.3)
+    #   tasks 6.1+6.2   → plus-separated list
+    #   tasks 7.1-7.3   → also with em-dash (—)
+    local git_log
+    git_log=$(git -C "$PROJECT_ROOT" log --oneline --all 2>/dev/null || true)
+
+    {
+        # Match single task: "task N.M"
+        echo "$git_log" | grep -oE "task ${epic_num}\.[0-9]+" | sed "s/task //" || true
+
+        # Match plus-separated: "tasks N.M+N.P+..."
+        echo "$git_log" | grep -oE "tasks ${epic_num}\.[0-9]+(\+${epic_num}\.[0-9]+)+" | while read -r match; do
+            echo "$match" | sed 's/^tasks //' | tr '+' '\n'
+        done || true
+
+        # Match range with regular or em-dash: "tasks N.M-N.P" or "tasks N.M—N.P"
+        echo "$git_log" | grep -oE "tasks ${epic_num}\.[0-9]+[—-]${epic_num}\.[0-9]+" | while read -r match; do
+            local nums
+            nums=$(echo "$match" | sed 's/^tasks //' | sed "s/${epic_num}\.//g" | sed 's/[—-]/ /')
+            local start_num end_num
+            start_num=$(echo "$nums" | awk '{print $1}')
+            end_num=$(echo "$nums" | awk '{print $2}')
+            for ((i=start_num; i<=end_num; i++)); do
+                echo "${epic_num}.${i}"
+            done
+        done || true
+    } | sort -t. -k2 -n | uniq > "$task_file" 2>/dev/null || true
+
     local count
     count=$(wc -l < "$task_file" 2>/dev/null | tr -d ' ')
     log "Recorded ${count} completed task(s) for Epic ${epic_num}"
