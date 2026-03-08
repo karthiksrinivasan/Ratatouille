@@ -50,7 +50,11 @@ Steps:
 Return ONLY valid JSON.""",
         )
 
-        tag_data = json.loads(response.text)
+        raw_tags = response.text.strip()
+        if raw_tags.startswith("```"):
+            raw_tags = raw_tags.split("\n", 1)[1]
+            raw_tags = raw_tags.rsplit("```", 1)[0]
+        tag_data = json.loads(raw_tags)
         tag_map = {item["step_number"]: item["tags"] for item in tag_data}
         for step in steps:
             if not step.technique_tags and step.step_number in tag_map:
@@ -134,7 +138,13 @@ Return JSON with these fields:
 Return ONLY valid JSON.""",
         )
 
-        parsed = json.loads(response.text)
+        raw = response.text.strip()
+        # Strip markdown code fences that Gemini often adds.
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1]  # remove opening ```json line
+            raw = raw.rsplit("```", 1)[0]  # remove closing ```
+        logger.info("Gemini URL-parse response: %s", raw[:500])
+        parsed = json.loads(raw)
         parsed["source_type"] = "url_parsed"
         parsed["source_url"] = body.url
 
@@ -163,8 +173,10 @@ Return ONLY valid JSON.""",
 
 @router.get("/recipes")
 async def list_recipes(user: dict = Depends(get_current_user)):
-    query = db.collection("recipes").where("uid", "==", user["uid"]).order_by("created_at")
+    query = db.collection("recipes").where("uid", "==", user["uid"])
     docs = [doc.to_dict() async for doc in query.stream()]
+    # Sort by created_at in-memory to avoid requiring a composite index.
+    docs.sort(key=lambda d: d.get("created_at") or "", reverse=False)
     return docs
 
 
