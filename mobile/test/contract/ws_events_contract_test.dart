@@ -281,7 +281,7 @@ void main() {
 
       final processed = <Map<String, dynamic>>[];
       for (final event in events) {
-        final eventId = event['event_id'] as String?;
+        final eventId = event['event_id'];
         if (eventId != null && seen.contains(eventId)) continue;
         if (eventId != null) seen.add(eventId);
         processed.add(event);

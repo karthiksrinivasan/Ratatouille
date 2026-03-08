@@ -6,7 +6,6 @@ import 'package:image_picker/image_picker.dart';
 
 import 'api_client.dart';
 import 'auth_service.dart';
-import 'env_config.dart';
 
 /// Constraints for media capture.
 class CaptureConstraints {
@@ -24,8 +23,6 @@ enum UploadState { idle, uploading, success, error, cancelled }
 class MediaPipeline extends ChangeNotifier {
   final ImagePicker _picker;
   final ApiClient _apiClient;
-  final AuthService? _authService;
-
   UploadState _uploadState = UploadState.idle;
   double _uploadProgress = 0.0;
   String? _uploadError;
@@ -36,8 +33,7 @@ class MediaPipeline extends ChangeNotifier {
     required ApiClient apiClient,
     AuthService? authService,
   })  : _picker = picker ?? ImagePicker(),
-        _apiClient = apiClient,
-        _authService = authService;
+        _apiClient = apiClient;
 
   UploadState get uploadState => _uploadState;
   double get uploadProgress => _uploadProgress;
