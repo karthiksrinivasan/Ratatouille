@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -28,6 +30,18 @@ Future<void> main() async {
 
   // Create core services.
   final authService = AuthService();
+
+  // Auto sign-in anonymously if no user is signed in.
+  if (!authService.isSignedIn) {
+    try {
+      await authService.signInAnonymously();
+      developer.log('Anonymous sign-in succeeded, uid: ${authService.currentUser?.uid}');
+    } catch (e) {
+      developer.log('Anonymous sign-in failed: $e', error: e);
+    }
+  }
+  developer.log('Auth state: isSignedIn=${authService.isSignedIn}, uid=${authService.currentUser?.uid}');
+
   final apiClient = ApiClient(authService: authService);
 
   runApp(
