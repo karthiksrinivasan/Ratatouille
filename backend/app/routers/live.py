@@ -248,6 +248,26 @@ async def live_session(websocket: WebSocket, session_id: str):
                 response = await orchestrator.handle_vision_check(frame_uri)
                 await websocket.send_json(response)
 
+            elif event_type == "context_update":
+                # In-session context capture: update freestyle context mid-session
+                updates = data.get("context", {})
+                ctx = orchestrator.state.get("freestyle_context", {})
+                for k, v in updates.items():
+                    if k == "available_ingredients" and isinstance(v, list):
+                        existing = ctx.get("available_ingredients", [])
+                        ctx["available_ingredients"] = list(set(existing + v))
+                    else:
+                        ctx[k] = v
+                orchestrator.state["freestyle_context"] = ctx
+                # Persist context update
+                await persist_session_state(session_id, {
+                    "freestyle_context": ctx,
+                })
+                await websocket.send_json({
+                    "type": "context_updated",
+                    "freestyle_context": ctx,
+                })
+
             elif event_type == "ambient_toggle":
                 enabled = data.get("enabled", False)
                 await orchestrator.set_ambient_mode(enabled)

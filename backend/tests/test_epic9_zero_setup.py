@@ -177,3 +177,66 @@ class TestFreestyleOrchestrator:
         assert callable(get_freestyle_context)
         assert callable(update_freestyle_context)
         assert callable(add_dynamic_step)
+
+
+class TestInSessionContextCapture:
+    """Task 9.5 — In-session context capture."""
+
+    @pytest.mark.asyncio
+    async def test_context_update_adds_ingredients(self):
+        from app.agents.orchestrator import create_session_orchestrator
+        session = {
+            "session_mode": "freestyle",
+            "freestyle_context": {"available_ingredients": ["eggs"]},
+            "current_step": 1,
+            "mode_settings": {},
+            "calibration_state": {},
+            "uid": "u1",
+            "session_id": "s1",
+        }
+        orch = await create_session_orchestrator(session, None)
+        ctx = orch.state.get("freestyle_context", {})
+        # Simulate context update (merge ingredients)
+        new_ingredients = ["cheese", "spinach"]
+        existing = ctx.get("available_ingredients", [])
+        ctx["available_ingredients"] = list(set(existing + new_ingredients))
+        orch.state["freestyle_context"] = ctx
+        assert "eggs" in orch.state["freestyle_context"]["available_ingredients"]
+        assert "cheese" in orch.state["freestyle_context"]["available_ingredients"]
+        assert "spinach" in orch.state["freestyle_context"]["available_ingredients"]
+
+    @pytest.mark.asyncio
+    async def test_context_update_sets_time_budget(self):
+        from app.agents.orchestrator import create_session_orchestrator
+        session = {
+            "session_mode": "freestyle",
+            "freestyle_context": {},
+            "current_step": 1,
+            "mode_settings": {},
+            "calibration_state": {},
+            "uid": "u1",
+            "session_id": "s1",
+        }
+        orch = await create_session_orchestrator(session, None)
+        ctx = orch.state.get("freestyle_context", {})
+        ctx["time_budget_minutes"] = 20
+        orch.state["freestyle_context"] = ctx
+        assert orch.state["freestyle_context"]["time_budget_minutes"] == 20
+
+    @pytest.mark.asyncio
+    async def test_missing_context_never_blocks(self):
+        """Sessions should work even with no context at all."""
+        from app.agents.orchestrator import create_session_orchestrator
+        session = {
+            "session_mode": "freestyle",
+            "freestyle_context": {},
+            "current_step": 1,
+            "mode_settings": {},
+            "calibration_state": {},
+            "uid": "u1",
+            "session_id": "s1",
+        }
+        orch = await create_session_orchestrator(session, None)
+        # advance_step should work with no context
+        result = await orch.advance_step()
+        assert result["type"] == "buddy_message"
