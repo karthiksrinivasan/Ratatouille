@@ -219,6 +219,20 @@ void main() {
       apiClient.dispose();
     });
 
+    test('retries on 502 for idempotent GET', () async {
+      int callCount = 0;
+      final client = http_testing.MockClient((request) async {
+        callCount++;
+        if (callCount == 1) return http.Response('{}', 502);
+        return http.Response('{"ok": true}', 200);
+      });
+
+      final api = ApiClient(httpClient: client, baseUrl: 'http://test');
+      final result = await api.getWithRetry('/v1/health');
+      expect(result['ok'], true);
+      expect(callCount, 2);
+    });
+
     test('GET times out after default timeout', () async {
       final client = http_testing.MockClient((request) async {
         await Future.delayed(const Duration(seconds: 15));

@@ -240,20 +240,28 @@ class ApiClient {
     return headers;
   }
 
-  /// Execute a GET request with automatic 401 retry (force-refreshes token).
+  /// Execute a GET request with automatic 401 retry and 5xx exponential backoff.
   Future<Map<String, dynamic>> getWithRetry(
     String path, {
     Map<String, String>? queryParams,
+    int maxRetries = 2,
   }) async {
-    try {
-      return await get(path, queryParams: queryParams);
-    } on ApiException catch (e) {
-      if (e.isUnauthorized) {
-        await _forceRefreshToken();
-        return get(path, queryParams: queryParams);
+    for (int attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await get(path, queryParams: queryParams);
+      } on ApiException catch (e) {
+        if (e.isUnauthorized && attempt == 0) {
+          await _forceRefreshToken();
+          continue;
+        }
+        if (e.statusCode >= 502 && e.statusCode <= 504 && attempt < maxRetries) {
+          await Future.delayed(Duration(milliseconds: 500 * (1 << attempt)));
+          continue;
+        }
+        rethrow;
       }
-      rethrow;
     }
+    return get(path, queryParams: queryParams);
   }
 
   /// Execute a POST request with automatic 401 retry (force-refreshes token).
