@@ -25,6 +25,10 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
   CompleteResponse? _summary;
   String? _error;
 
+  /// Wind-down interaction counter — auto-navigate home after 3 interactions.
+  static const int _maxWindDownInteractions = 3;
+  int _interactionCount = 0;
+
   Future<void> _completeSession() async {
     setState(() {
       _completing = true;
@@ -36,6 +40,7 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
       final sessionApi = SessionApiService(api: api);
       final response = await sessionApi.complete(widget.sessionId);
 
+      _trackInteraction(); // Completion beat = 1st interaction
       setState(() {
         _completed = true;
         _summary = response;
@@ -48,7 +53,18 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
     }
   }
 
+  /// Track wind-down interaction; auto-navigate home after limit reached.
+  void _trackInteraction() {
+    _interactionCount++;
+    if (_interactionCount >= _maxWindDownInteractions) {
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted) context.go(AppRoutes.home);
+      });
+    }
+  }
+
   Future<void> _confirmMemory() async {
+    _trackInteraction();
     setState(() {
       _memoryConfirmed = true;
       _showMemoryPrompt = false;
@@ -83,6 +99,7 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
   }
 
   Future<void> _declineMemory() async {
+    _trackInteraction();
     setState(() {
       _memoryConfirmed = false;
       _showMemoryPrompt = false;
