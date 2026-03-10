@@ -64,6 +64,16 @@ class WsClient extends ChangeNotifier {
   Map<String, Map<String, dynamic>> get lastProcessStates =>
       Map.unmodifiable(_lastProcessStates);
 
+  /// Whether reconnect attempts have been exhausted for the current session.
+  bool get maxRetriesReached =>
+      _reconnectAttempts >= _maxReconnectAttempts && _currentSessionId != null;
+
+  /// Reset reconnect counter so the user can manually retry.
+  void resetReconnect() {
+    _reconnectAttempts = 0;
+    _reconnectTimer?.cancel();
+  }
+
   /// Stream of decoded JSON messages from the server.
   Stream<Map<String, dynamic>> get messages => _messageController.stream;
 
