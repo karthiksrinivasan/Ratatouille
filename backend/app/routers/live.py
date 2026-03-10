@@ -168,7 +168,13 @@ async def live_session(websocket: WebSocket, session_id: str):
                     continue
                 audio_data = data.get("audio")
                 response = await orchestrator.handle_audio_chunk(audio_data)
-                if response:
+                if response and response.get("type") == "audio_response":
+                    await websocket.send_json({
+                        "type": "buddy_audio",
+                        "audio": response["audio"],
+                        "mime_type": response.get("mime_type", "audio/pcm"),
+                    })
+                elif response:
                     await websocket.send_json(response)
 
             elif event_type == "step_complete":
