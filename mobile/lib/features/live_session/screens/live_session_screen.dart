@@ -284,6 +284,16 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           }
           break;
 
+        // --- Vision result (inline check) ---
+        case 'vision_result':
+          final assessment = msg['assessment'] as String? ?? '';
+          if (assessment.isNotEmpty) {
+            _lastBuddyMessage = assessment;
+            _buddyState = BuddyState.speaking;
+            _connectionLabel = 'Buddy speaking...';
+          }
+          break;
+
         // --- Epic 5: Process events ---
         case 'process_update':
           _updateProcessBar(msg);
