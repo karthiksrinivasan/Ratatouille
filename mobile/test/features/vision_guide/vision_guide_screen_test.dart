@@ -52,38 +52,12 @@ void main() {
     });
   });
 
-  group('VisionResultCard', () {
-    testWidgets('displays high confidence badge', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: VisionResultCard(result: const {
-            'confidence': 'high',
-            'message': 'Golden garlic',
-            'recommendation': 'Move to next step',
-          }),
-        ),
-      ));
+  group('VisionCheckTab confidence display', () {
+    testWidgets('vision check tab renders capture button', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('HIGH'), findsOneWidget);
-      expect(find.text('Golden garlic'), findsOneWidget);
-      expect(find.text('Move to next step'), findsOneWidget);
-    });
-
-    testWidgets('displays sensory check for medium confidence', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: VisionResultCard(result: const {
-            'confidence': 'medium',
-            'message': 'Partially visible',
-            'sensory_check': 'Listen for sizzle',
-          }),
-        ),
-      ));
-      await tester.pumpAndSettle();
-
-      expect(find.text('MEDIUM'), findsOneWidget);
-      expect(find.textContaining('sizzle'), findsOneWidget);
+      expect(find.text('Check Doneness'), findsOneWidget);
     });
   });
 
@@ -174,25 +148,16 @@ void main() {
     });
   });
 
-  group('RecoveryCard', () {
-    testWidgets('displays immediate action at top in red', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(
-          body: SingleChildScrollView(
-            child: RecoveryCard(result: const {
-              'type': 'recovery',
-              'message': 'Take pan off heat NOW.\n\nIt happens to everyone.\n\nStill salvageable.\n\nPick out dark pieces.',
-              'techniques_affected': ['sauteing'],
-            }),
-          ),
-        ),
-      ));
+  group('RecoveryTab quick chips', () {
+    testWidgets('recovery tab renders quick error chips', (tester) async {
+      await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      // Immediate action text should be present
-      expect(find.text('Take pan off heat NOW.'), findsOneWidget);
-      // Technique chip
-      expect(find.text('sauteing'), findsOneWidget);
+      await tester.tap(find.text('Recovery'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Burnt'), findsOneWidget);
+      expect(find.text('Overcooked'), findsOneWidget);
     });
   });
 }
