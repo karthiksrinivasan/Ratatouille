@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 
 import '../../../app/router.dart';
 import '../../../core/permission_service.dart';
-import '../../../shared/widgets/error_display.dart';
 import '../providers/scan_provider.dart';
 
 /// Fridge/pantry scan flow — capture entry screen.
@@ -116,12 +115,7 @@ class _ScanScreenState extends State<ScanScreen> {
           body: provider.isLoading
               ? _buildLoadingState(provider, theme)
               : provider.error != null
-                  ? ErrorDisplay(
-                      message: provider.error!,
-                      onRetry: () {
-                        provider.clearError();
-                      },
-                    )
+                  ? _buildErrorRecovery(provider, theme)
                   : _buildCaptureUI(provider, theme),
         );
       },
@@ -148,6 +142,52 @@ class _ScanScreenState extends State<ScanScreen> {
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorRecovery(ScanProvider provider, ThemeData theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: theme.colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              provider.error!,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.error,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed: () {
+                provider.clearError();
+                if (provider.selectedImages.isNotEmpty) {
+                  provider.uploadAndDetect();
+                }
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Try Again'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () {
+                provider.clearError();
+                context.go(AppRoutes.scanReview);
+              },
+              icon: const Icon(Icons.edit),
+              label: const Text('Enter Manually Instead'),
             ),
           ],
         ),
