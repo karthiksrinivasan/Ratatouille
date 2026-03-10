@@ -1,7 +1,13 @@
 """WebSocket live channel for real-time cooking sessions (Epic 4 + Epic 5)."""
 
+import logging
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from firebase_admin import auth as firebase_auth
+
+from app.models.ws_events import IncomingWsEvent
+
+logger = logging.getLogger(__name__)
 
 from app.services.firestore import db
 from app.services.sessions import persist_session_state, log_session_event
@@ -140,6 +146,15 @@ async def live_session(websocket: WebSocket, session_id: str):
 
         while True:
             data = await websocket.receive_json()
+
+            # Validate incoming WS event
+            try:
+                validated = IncomingWsEvent(**data)
+            except Exception as e:
+                logger.warning(f"WS event validation failed: {e}", extra={"raw_event": data})
+                await websocket.send_json({"type": "error", "message": "Invalid event format"})
+                continue
+
             event_type = data.get("type")
             text = data.get("text", "")
 
