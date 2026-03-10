@@ -272,9 +272,18 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         // --- Browse Mode (Task 4.12) ---
         case 'browse_observation':
           _browseActive = true;
-          _browseIngredients = (msg['ingredients'] as List<dynamic>?)
-                  ?.cast<Map<String, dynamic>>() ??
-              [];
+          // D9.14: Check confidence — show fallback for poor video quality
+          final browseConfidence =
+              (msg['confidence'] as num?)?.toDouble() ?? 0.0;
+          if (browseConfidence < 0.3) {
+            _lastBuddyMessage =
+                'Having trouble seeing clearly — try better lighting or hold the camera closer.';
+            _browseIngredients = [];
+          } else {
+            _browseIngredients = (msg['ingredients'] as List<dynamic>?)
+                    ?.cast<Map<String, dynamic>>() ??
+                [];
+          }
           break;
         case 'ingredient_candidates':
           _browseIngredients = (msg['candidates'] as List<dynamic>?)
