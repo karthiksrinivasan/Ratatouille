@@ -21,6 +21,7 @@ from app.services.processes import (
     persist_process_state as persist_process,
 )
 from app.agents.orchestrator import create_session_orchestrator
+from app.agents.guide_image import GuideImageGenerator
 from app.services.analytics import emit_product_event
 from app.services.browse import BrowseSession
 
@@ -81,6 +82,12 @@ async def live_session(websocket: WebSocket, session_id: str):
 
     # Initialize orchestrator
     orchestrator = await create_session_orchestrator(session, recipe)
+
+    # --- Epic 4: Initialize guide image generator ---
+    guide_gen = GuideImageGenerator(
+        session_id=session_id,
+        recipe_title=recipe.get("title", "this recipe") if recipe else "freestyle",
+    )
 
     # --- Epic 5: Initialize process tracking ---
     processes = []
@@ -225,6 +232,37 @@ async def live_session(websocket: WebSocket, session_id: str):
 
                 # Push updated process bar
                 await push_process_bar(websocket, processes)
+
+                # --- D4.17/D4.22: Buddy-initiated guide image at checkpoint ---
+                if recipe:
+                    steps = recipe.get("steps", [])
+                    step_idx = current_step - 1
+                    if 0 <= step_idx < len(steps):
+                        step_data = steps[step_idx]
+                        if step_data.get("guide_image_prompt"):
+                            try:
+                                guide_result = await guide_gen.generate_guide(
+                                    step=step_data,
+                                    stage_label=f"step_{current_step}_target",
+                                )
+                                if "error" not in guide_result:
+                                    await websocket.send_json({
+                                        "type": "visual_guide",
+                                        "image_url": guide_result["image_url"],
+                                        "caption": f"Here's what step {current_step} should look like.",
+                                        "visual_cues": guide_result.get("cue_overlays", []),
+                                        "step": current_step,
+                                    })
+                                    # Narrate the guide with buddy audio hint
+                                    cues = guide_result.get("cue_overlays", [])
+                                    cue_text = " and ".join(cues[:2]) if cues else "the target state"
+                                    await websocket.send_json({
+                                        "type": "buddy_message",
+                                        "text": f"I'm sending you a reference image — look for {cue_text}.",
+                                        "step": current_step,
+                                    })
+                            except Exception as guide_err:
+                                logger.warning(f"Guide image generation failed: {guide_err}")
 
                 # Persist step change and calibration state
                 await persist_session_state(session_id, {
