@@ -6,9 +6,26 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 import 'package:provider/provider.dart';
 import 'package:ratatouille/core/api_client.dart';
+import 'package:ratatouille/core/auth_service.dart';
 import 'package:ratatouille/features/live_session/screens/cook_now_screen.dart';
 import 'package:ratatouille/core/session_api.dart';
 import 'package:ratatouille/features/scan/screens/home_screen.dart';
+
+/// Minimal fake AuthService for tests that avoids Firebase dependency.
+class _FakeAuthService extends ChangeNotifier implements AuthService {
+  @override
+  bool get isSignedIn => true;
+  @override
+  bool get isAnonymous => true;
+  @override
+  String? get displayName => null;
+  @override
+  String? get email => null;
+  @override
+  void enableGuestMode() {}
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 Widget _wrapWithApi({required Widget child, ApiClient? api}) {
   return MaterialApp(
@@ -22,6 +39,15 @@ Widget _wrapWithApi({required Widget child, ApiClient? api}) {
             ),
         child: child,
       ),
+    ),
+  );
+}
+
+Widget _wrapHomeScreen() {
+  return MaterialApp(
+    home: ChangeNotifierProvider<AuthService>(
+      create: (_) => _FakeAuthService(),
+      child: const HomeScreen(),
     ),
   );
 }
@@ -169,13 +195,13 @@ void main() {
 
   group('HomeScreen Cook Now CTA', () {
     testWidgets('shows Seasoned Chef Buddy CTA', (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+      await tester.pumpWidget(_wrapHomeScreen());
       expect(find.text('Cook Now (Seasoned Chef Buddy)'), findsOneWidget);
     });
 
     testWidgets('both primary CTAs have equal visual prominence',
         (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
+      await tester.pumpWidget(_wrapHomeScreen());
       expect(find.text('Cook from Fridge or Pantry'), findsOneWidget);
       expect(find.text('Cook Now (Seasoned Chef Buddy)'), findsOneWidget);
     });

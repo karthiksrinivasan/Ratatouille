@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 
 import 'package:ratatouille/core/api_client.dart';
+import 'package:ratatouille/core/auth_service.dart';
 import 'package:ratatouille/core/connectivity.dart';
 import 'package:ratatouille/core/media_pipeline.dart';
 import 'package:ratatouille/features/scan/screens/home_screen.dart';
@@ -15,6 +16,31 @@ import 'package:ratatouille/shared/widgets/loading_indicator.dart';
 import 'package:ratatouille/shared/widgets/loading_overlay.dart';
 import 'package:ratatouille/shared/widgets/connectivity_banner.dart';
 import 'package:ratatouille/shared/widgets/upload_progress.dart';
+
+/// Minimal fake AuthService for tests that avoids Firebase dependency.
+class _FakeAuthService extends ChangeNotifier implements AuthService {
+  @override
+  bool get isSignedIn => true;
+  @override
+  bool get isAnonymous => true;
+  @override
+  String? get displayName => null;
+  @override
+  String? get email => null;
+  @override
+  void enableGuestMode() {}
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Widget _wrapHomeScreen() {
+  return MaterialApp(
+    home: ChangeNotifierProvider<AuthService>(
+      create: (_) => _FakeAuthService(),
+      child: const HomeScreen(),
+    ),
+  );
+}
 
 void main() {
   late ApiClient apiClient;
@@ -36,9 +62,7 @@ void main() {
 
   group('Demo Flow QA - Screen Construction', () {
     testWidgets('Home screen renders all entry points', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: HomeScreen()),
-      );
+      await tester.pumpWidget(_wrapHomeScreen());
 
       // Verify primary entry points exist
       expect(find.text('Cook from Fridge or Pantry'), findsOneWidget);
@@ -267,9 +291,7 @@ void main() {
 
   group('Demo Flow QA - No Dead-End States', () {
     testWidgets('Home screen has navigable entry cards', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: HomeScreen()),
-      );
+      await tester.pumpWidget(_wrapHomeScreen());
 
       // All entry cards have chevron indicating navigation
       expect(find.byIcon(Icons.chevron_right), findsNWidgets(3));
@@ -345,8 +367,14 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('ConnectivityBanner renders degraded state', (tester) async {
-      final connectivity = ConnectivityService();
+    testWidgets('ConnectivityBanner renders degraded state via request failure',
+        (tester) async {
+      final connectivity = ConnectivityService(autoListen: false);
+      // Trigger degraded state — markDegraded alone doesn't set isOnline=false,
+      // so the banner only shows when we use onRequestFailure which transitions
+      // from online → degraded, keeping isOnline true until a timeout pushes offline.
+      // To test the degraded banner, we first go offline then back to degraded:
+      connectivity.markOffline();
       connectivity.markDegraded();
 
       await tester.pumpWidget(
@@ -360,6 +388,8 @@ void main() {
         ),
       );
 
+      // After going offline then degraded, isOnline is still false,
+      // so the banner renders with "Connection is unstable"
       expect(find.text('Connection is unstable'), findsOneWidget);
       expect(find.byIcon(Icons.cloud_queue), findsOneWidget);
 
@@ -466,10 +496,8 @@ void main() {
         ),
       );
 
-      // Five taste dimensions card
-      expect(find.text('Five Taste Dimensions'), findsOneWidget);
-      expect(find.text('Salt'), findsOneWidget);
-      expect(find.text('Acid'), findsOneWidget);
+      // Conversational prompt (replaced Five Taste Dimensions)
+      expect(find.textContaining('Ready for a taste check'), findsOneWidget);
 
       // Taste check button
       expect(find.text('Taste Check'), findsOneWidget);

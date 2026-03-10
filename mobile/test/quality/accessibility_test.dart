@@ -5,10 +5,36 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart' as http_testing;
 
 import 'package:ratatouille/core/api_client.dart';
+import 'package:ratatouille/core/auth_service.dart';
 import 'package:ratatouille/features/scan/screens/home_screen.dart';
 import 'package:ratatouille/features/scan/providers/scan_provider.dart';
 import 'package:ratatouille/features/scan/screens/scan_screen.dart';
 import 'package:ratatouille/shared/design_tokens.dart' as tokens;
+
+/// Minimal fake AuthService for tests that avoids Firebase dependency.
+class _FakeAuthService extends ChangeNotifier implements AuthService {
+  @override
+  bool get isSignedIn => true;
+  @override
+  bool get isAnonymous => true;
+  @override
+  String? get displayName => null;
+  @override
+  String? get email => null;
+  @override
+  void enableGuestMode() {}
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+Widget _wrapHomeScreen() {
+  return MaterialApp(
+    home: ChangeNotifierProvider<AuthService>(
+      create: (_) => _FakeAuthService(),
+      child: const HomeScreen(),
+    ),
+  );
+}
 
 void main() {
   late ApiClient apiClient;
@@ -42,9 +68,7 @@ void main() {
 
   group('Accessibility - Text Readability', () {
     testWidgets('home screen has readable text sizes', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: HomeScreen()),
-      );
+      await tester.pumpWidget(_wrapHomeScreen());
 
       // App title should be large
       final titleFinder = find.text('Ratatouille');
@@ -74,9 +98,7 @@ void main() {
 
     testWidgets('home screen entry cards have descriptive text',
         (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: HomeScreen()),
-      );
+      await tester.pumpWidget(_wrapHomeScreen());
 
       // Both entry cards have title and subtitle for screen readers
       expect(find.text('Cook from Fridge or Pantry'), findsOneWidget);
@@ -101,9 +123,7 @@ void main() {
 
   group('Performance - Widget Efficiency', () {
     testWidgets('home screen builds without overflow', (tester) async {
-      await tester.pumpWidget(
-        const MaterialApp(home: HomeScreen()),
-      );
+      await tester.pumpWidget(_wrapHomeScreen());
       // No overflow errors means layout is correct
       expect(tester.takeException(), isNull);
     });

@@ -122,14 +122,17 @@ void main() {
       );
     }
 
-    testWidgets('shows Cooking Session title', (tester) async {
+    testWidgets('shows step indicator (no AppBar title)', (tester) async {
       await tester.pumpWidget(buildApp());
-      expect(find.text('Cooking Session'), findsOneWidget);
+      // FaceTime-style: no AppBar with "Cooking Session", but step indicator exists
+      expect(find.text('Cooking Session'), findsNothing);
+      expect(find.text('Step 1'), findsOneWidget);
     });
 
-    testWidgets('shows state banner with Listening', (tester) async {
+    testWidgets('shows connection state label', (tester) async {
       await tester.pumpWidget(buildApp());
-      expect(find.text('Listening'), findsOneWidget);
+      // Initial state shows "Connecting..." (before mic permission resolves)
+      expect(find.textContaining('Connecting'), findsOneWidget);
     });
 
     testWidgets('shows step indicator', (tester) async {
@@ -137,12 +140,12 @@ void main() {
       expect(find.text('Step 1'), findsOneWidget);
     });
 
-    testWidgets('shows hands-busy controls', (tester) async {
+    testWidgets('shows call chrome controls (Mute, Flip, End)', (tester) async {
       await tester.pumpWidget(buildApp());
-      expect(find.text('Next Step'), findsOneWidget);
-      expect(find.text('Vision Check'), findsOneWidget);
-      expect(find.text('Repeat'), findsOneWidget);
-      expect(find.text('Finish Session'), findsOneWidget);
+      // FaceTime-style call controls replace old hands-busy buttons
+      expect(find.text('Mute'), findsOneWidget);
+      expect(find.text('Flip'), findsOneWidget);
+      expect(find.text('End'), findsOneWidget);
     });
 
     testWidgets('ambient indicator toggles', (tester) async {
@@ -161,27 +164,6 @@ void main() {
       expect(fakeWs.sentMessages.last['enabled'], true);
     });
 
-    testWidgets('Next Step sends step_complete', (tester) async {
-      await tester.pumpWidget(buildApp());
-
-      await tester.tap(find.text('Next Step'));
-      await tester.pump();
-
-      expect(fakeWs.sentMessages.length, 1);
-      expect(fakeWs.sentMessages.last['type'], 'step_complete');
-    });
-
-    testWidgets('Repeat sends voice_query', (tester) async {
-      await tester.pumpWidget(buildApp());
-
-      await tester.tap(find.text('Repeat'));
-      await tester.pump();
-
-      expect(fakeWs.sentMessages.length, 1);
-      expect(fakeWs.sentMessages.last['type'], 'voice_query');
-      expect(fakeWs.sentMessages.last['text'], 'repeat quickly');
-    });
-
     testWidgets('buddy_message updates display', (tester) async {
       await tester.pumpWidget(buildApp());
 
@@ -194,10 +176,12 @@ void main() {
 
       expect(find.text('Boil the water first.'), findsOneWidget);
       expect(find.text('Step 2'), findsOneWidget);
-      expect(find.text('Buddy speaking'), findsOneWidget);
+      expect(find.text('Buddy speaking...'), findsOneWidget);
 
-      // Drain the 2-second auto-transition timer to avoid pending timer error
+      // Drain the 3-second auto-transition timer + 5-second BuddyCaption fade timer
       await tester.pump(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(milliseconds: 500));
     });
 
     testWidgets('buddy_interrupted shows chip', (tester) async {
@@ -210,7 +194,7 @@ void main() {
       });
       await tester.pump();
 
-      expect(find.text('Interrupted — tap to resume summary'), findsOneWidget);
+      expect(find.text('Interrupted — tap to resume'), findsOneWidget);
       expect(find.text('Interrupted'), findsOneWidget);
     });
 
@@ -224,7 +208,7 @@ void main() {
       });
       await tester.pump();
 
-      await tester.tap(find.text('Interrupted — tap to resume summary'));
+      await tester.tap(find.text('Interrupted — tap to resume'));
       await tester.pump();
 
       expect(fakeWs.sentMessages.length, 1);
@@ -240,10 +224,10 @@ void main() {
       });
       await tester.pump();
 
-      // Ambient is now enabled — hearing icon in app bar + privacy banner
+      // Ambient is now enabled — hearing icon + privacy banner
       expect(find.byIcon(Icons.hearing), findsAtLeast(1));
       // Privacy banner text confirms ambient is on
-      expect(find.text('Ambient listening ON — audio is not stored'), findsOneWidget);
+      expect(find.text('Ambient ON — audio not stored'), findsOneWidget);
     });
 
     testWidgets('error message updates display', (tester) async {
@@ -256,13 +240,17 @@ void main() {
       await tester.pump();
 
       expect(find.text('Connection lost.'), findsOneWidget);
+
+      // Drain BuddyCaption fade timer
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(milliseconds: 500));
     });
 
     testWidgets('ambient privacy banner shown when ambient enabled', (tester) async {
       await tester.pumpWidget(buildApp());
 
       // Banner not visible initially
-      expect(find.text('Ambient listening ON — audio is not stored'), findsNothing);
+      expect(find.text('Ambient ON — audio not stored'), findsNothing);
 
       // Enable ambient via mode_update
       fakeWs.simulateMessage({
@@ -272,7 +260,7 @@ void main() {
       await tester.pump();
 
       // Banner should now be visible
-      expect(find.text('Ambient listening ON — audio is not stored'), findsOneWidget);
+      expect(find.text('Ambient ON — audio not stored'), findsOneWidget);
     });
 
     testWidgets('session_state restores state after reconnect', (tester) async {
@@ -288,7 +276,11 @@ void main() {
 
       expect(find.text('Step 5'), findsOneWidget);
       expect(find.text('Welcome back! You were on step 5.'), findsOneWidget);
-      expect(find.text('Ambient listening ON — audio is not stored'), findsOneWidget);
+      expect(find.text('Ambient ON — audio not stored'), findsOneWidget);
+
+      // Drain BuddyCaption fade timer
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(milliseconds: 500));
     });
   });
 }
