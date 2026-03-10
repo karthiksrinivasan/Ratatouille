@@ -1,16 +1,20 @@
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 import '../../../app/router.dart';
 import '../../../core/api_client.dart';
+import '../../../core/camera_service.dart';
+import '../../../core/session_api.dart';
 
-/// Full vision/guide/taste/recovery UX for live cooking sessions (Epic 6, Task 6.10).
+/// Full vision/guide/taste/recovery UX for live cooking sessions (Epic 6).
 ///
 /// Tabs:
 ///   1. Vision Check — capture frame, display confidence-tiered result
-///   2. Guide Image — side-by-side or swipe comparison
-///   3. Taste Check — prompted/diagnostic taste flow
-///   4. Recovery — emergency-style recovery card
+///   2. Guide Image — side-by-side comparison with cue overlays
+///   3. Taste Check — conversational diagnostic taste flow
+///   4. Recovery — emergency-style recovery with instant-feel UX
 class VisionGuideScreen extends StatefulWidget {
   final String sessionId;
   final ApiClient? apiClient; // injectable for testing
@@ -72,7 +76,9 @@ class _VisionGuideScreenState extends State<VisionGuideScreen>
 }
 
 // =============================================================================
-// Vision Check Tab
+// Vision Check Tab (Task 6.1)
+// — Wired to real API via SessionApiService.visionCheck()
+// — Confidence-tier UX: >=0.8 green, >=0.5 amber, >=0.2 orange, <0.2 red
 // =============================================================================
 
 class VisionCheckTab extends StatefulWidget {
@@ -86,27 +92,87 @@ class VisionCheckTab extends StatefulWidget {
 }
 
 class VisionCheckTabState extends State<VisionCheckTab> {
+  final CameraService _camera = CameraService();
   bool _loading = false;
-  Map<String, dynamic>? _result;
+  bool _cameraReady = false;
+  VisionCheckResponse? _result;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      await _camera.initialize(front: false);
+      if (mounted) setState(() => _cameraReady = true);
+    } catch (_) {
+      // Camera not available — user can still see the flow
+    }
+  }
+
+  @override
+  void dispose() {
+    _camera.dispose();
+    super.dispose();
+  }
 
   Future<void> _captureAndCheck() async {
     setState(() {
       _loading = true;
       _error = null;
+      _result = null;
     });
-    // In a real app, this would capture from camera and upload.
-    // For now, show a placeholder indicating the flow.
-    await Future.delayed(const Duration(milliseconds: 500));
-    setState(() {
-      _loading = false;
-      _result = {
-        'type': 'vision_result',
-        'confidence': 'pending',
-        'message': 'Point your camera at the food and tap capture to check doneness.',
-        'tone': 'qualified',
-      };
-    });
+
+    try {
+      // Capture frame from camera
+      final framePath = await _camera.captureFrameToFile();
+      if (framePath == null) {
+        setState(() {
+          _loading = false;
+          _error = 'Could not capture frame. Check camera permissions.';
+        });
+        return;
+      }
+
+      // Upload frame and get vision check via real API
+      if (!mounted) return;
+      final api = widget.apiClient ?? context.read<ApiClient>();
+      final uploadResult = await api.uploadFile(
+        '/v1/upload',
+        filePath: framePath,
+      );
+      final frameUri = uploadResult['uri'] as String? ?? '';
+
+      final sessionApi = SessionApiService(api: api);
+      final response = await sessionApi.visionCheck(
+        widget.sessionId,
+        frameUri: frameUri,
+      );
+
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _result = response;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Vision check failed: ${e.message}';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Something went wrong. Please try again.';
+        });
+      }
+    }
   }
 
   @override
@@ -125,19 +191,31 @@ class VisionCheckTabState extends State<VisionCheckTab> {
               color: Colors.black87,
               borderRadius: BorderRadius.circular(16),
             ),
-            child: const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.camera_alt, size: 48, color: Colors.white54),
-                  SizedBox(height: 8),
-                  Text(
-                    'Camera Preview',
-                    style: TextStyle(color: Colors.white54, fontSize: 16),
+            child: _cameraReady && _camera.controller != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: _camera.controller!.value.previewSize?.height ?? 1,
+                        height: _camera.controller!.value.previewSize?.width ?? 1,
+                        child: CameraPreview(_camera.controller!),
+                      ),
+                    ),
+                  )
+                : const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.camera_alt, size: 48, color: Colors.white54),
+                        SizedBox(height: 8),
+                        Text(
+                          'Camera Preview',
+                          style: TextStyle(color: Colors.white54, fontSize: 16),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
-            ),
           ),
           const SizedBox(height: 16),
 
@@ -161,8 +239,8 @@ class VisionCheckTabState extends State<VisionCheckTab> {
           ),
           const SizedBox(height: 20),
 
-          // Vision result card
-          if (_result != null) VisionResultCard(result: _result!),
+          // Vision result card with confidence tiers
+          if (_result != null) _VisionConfidenceCard(result: _result!),
           if (_error != null)
             Card(
               color: theme.colorScheme.errorContainer,
@@ -177,26 +255,31 @@ class VisionCheckTabState extends State<VisionCheckTab> {
   }
 }
 
-/// Displays vision check result with confidence badge and appropriate formatting.
-class VisionResultCard extends StatelessWidget {
-  final Map<String, dynamic> result;
+/// Confidence-tiered vision result card.
+///
+/// Tiers:
+///   >= 0.8 → green "Looks great!"
+///   >= 0.5 → amber "Getting there" + sensory prompt
+///   >= 0.2 → orange "Hard to tell — try repositioning"
+///   <  0.2 → red "Using sensory guidance instead"
+class _VisionConfidenceCard extends StatelessWidget {
+  final VisionCheckResponse result;
 
-  const VisionResultCard({super.key, required this.result});
+  const _VisionConfidenceCard({required this.result});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final confidence = result['confidence'] as String? ?? 'failed';
-    final message = result['message'] as String? ?? '';
-    final recommendation = result['recommendation'] as String?;
-    final sensoryCheck = result['sensory_check'] as String?;
+    final confidence = result.confidence;
 
-    final (badgeColor, badgeLabel) = switch (confidence) {
-      'high' => (Colors.green, 'HIGH'),
-      'medium' => (Colors.orange, 'MEDIUM'),
-      'low' => (Colors.red.shade300, 'LOW'),
-      _ => (Colors.grey, confidence.toUpperCase()),
-    };
+    final (Color tierColor, String tierLabel, String tierMessage, bool showSensory) =
+        confidence >= 0.8
+            ? (Colors.green, 'Looks great!', '', false)
+            : confidence >= 0.5
+                ? (Colors.amber.shade700, 'Getting there', 'Try a sensory check to confirm.', true)
+                : confidence >= 0.2
+                    ? (Colors.orange, 'Hard to tell', 'Try repositioning for a clearer view.', false)
+                    : (Colors.red, 'Using sensory guidance instead', '', true);
 
     return Card(
       elevation: 2,
@@ -205,27 +288,27 @@ class VisionResultCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Confidence badge
+            // Confidence tier badge + numeric value
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: badgeColor,
+                    color: tierColor,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    badgeLabel,
+                    tierLabel,
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      fontSize: 14,
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Confidence',
+                  '${(confidence * 100).toInt()}% confidence',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -234,13 +317,45 @@ class VisionResultCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // Assessment message — minimum 16px for readability
-            Text(
-              message,
-              style: theme.textTheme.bodyLarge?.copyWith(fontSize: 16, height: 1.4),
-            ),
+            // Assessment text
+            if (result.assessment.isNotEmpty)
+              Text(
+                result.assessment,
+                style: theme.textTheme.bodyLarge?.copyWith(fontSize: 16, height: 1.4),
+              ),
 
-            if (recommendation != null) ...[
+            // Tier-specific message
+            if (tierMessage.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                tierMessage,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: tierColor,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+
+            // Observations
+            if (result.observations.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ...result.observations.map((obs) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.visibility, size: 16, color: theme.colorScheme.primary),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(obs, style: const TextStyle(fontSize: 14)),
+                        ),
+                      ],
+                    ),
+                  )),
+            ],
+
+            // Recommendation
+            if (result.recommendation.isNotEmpty) ...[
               const SizedBox(height: 12),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -249,7 +364,7 @@ class VisionResultCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      recommendation,
+                      result.recommendation,
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w500,
                       ),
@@ -259,7 +374,8 @@ class VisionResultCard extends StatelessWidget {
               ),
             ],
 
-            if (sensoryCheck != null) ...[
+            // Sensory prompt for medium/low confidence
+            if (showSensory) ...[
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -268,15 +384,15 @@ class VisionResultCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
                 ),
-                child: Row(
+                child: const Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.hearing, size: 18, color: Colors.amber),
-                    const SizedBox(width: 8),
+                    Icon(Icons.hearing, size: 18, color: Colors.amber),
+                    SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Sensory check: $sensoryCheck',
-                        style: theme.textTheme.bodyMedium,
+                        'Sensory check: Poke with a fork or taste a small piece for a more reliable assessment.',
+                        style: TextStyle(fontSize: 14),
                       ),
                     ),
                   ],
@@ -291,7 +407,9 @@ class VisionResultCard extends StatelessWidget {
 }
 
 // =============================================================================
-// Guide Image Tab
+// Guide Image Tab (Task 6.2)
+// — Wired to real API via SessionApiService.visualGuide()
+// — Visual cues displayed as positioned labels on guide image
 // =============================================================================
 
 class GuideImageTab extends StatefulWidget {
@@ -306,24 +424,45 @@ class GuideImageTab extends StatefulWidget {
 
 class GuideImageTabState extends State<GuideImageTab> {
   bool _loading = false;
-  Map<String, dynamic>? _guideResult;
+  VisualGuideResponse? _guideResult;
+  String? _error;
   String _stageLabel = 'target';
 
   Future<void> _requestGuide() async {
     setState(() {
       _loading = true;
+      _error = null;
     });
-    // Placeholder — in real app, calls API with camera frame
-    await Future.delayed(const Duration(milliseconds: 500));
-    setState(() {
-      _loading = false;
-      _guideResult = {
-        'type': 'guide_image',
-        'image_url': null, // Would be a real URL from API
-        'cue_overlays': ['Edges are light golden', 'Oil sheen visible'],
-        'stage_label': _stageLabel,
-      };
-    });
+
+    try {
+      final api = widget.apiClient ?? context.read<ApiClient>();
+      final sessionApi = SessionApiService(api: api);
+      final response = await sessionApi.visualGuide(
+        widget.sessionId,
+        stage: _stageLabel,
+      );
+
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _guideResult = response;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Guide request failed: ${e.message}';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Something went wrong. Please try again.';
+        });
+      }
+    }
   }
 
   @override
@@ -358,7 +497,7 @@ class GuideImageTabState extends State<GuideImageTab> {
                 ),
               ),
               const SizedBox(width: 12),
-              // Target state
+              // Target state — shows guide image with cue overlays
               Expanded(
                 child: Column(
                   children: [
@@ -370,16 +509,63 @@ class GuideImageTabState extends State<GuideImageTab> {
                         color: Colors.grey.shade200,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: _guideResult != null
-                          ? const Center(
-                              child: Icon(Icons.image, color: Colors.grey, size: 32),
-                            )
-                          : Center(
-                              child: Text(
-                                'Tap Generate',
-                                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                      child: _guideResult != null && _guideResult!.guideImageUrl.isNotEmpty
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  Image.network(
+                                    _guideResult!.guideImageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const Center(
+                                      child: Icon(Icons.broken_image, color: Colors.grey, size: 32),
+                                    ),
+                                  ),
+                                  // Cue overlay labels positioned on the image
+                                  if (_guideResult!.visualCues.isNotEmpty)
+                                    Positioned(
+                                      left: 4,
+                                      bottom: 4,
+                                      right: 4,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black54,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: _guideResult!.visualCues
+                                              .take(3)
+                                              .map((cue) => Text(
+                                                    cue,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w500,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ))
+                                              .toList(),
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ),
-                            ),
+                            )
+                          : _guideResult != null
+                              ? const Center(
+                                  child: Icon(Icons.image, color: Colors.grey, size: 32),
+                                )
+                              : Center(
+                                  child: Text(
+                                    'Tap Generate',
+                                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                                  ),
+                                ),
                     ),
                   ],
                 ),
@@ -388,14 +574,14 @@ class GuideImageTabState extends State<GuideImageTab> {
           ),
           const SizedBox(height: 16),
 
-          // Cue overlays
-          if (_guideResult != null) ...[
+          // Visual cues list (full detail below images)
+          if (_guideResult != null && _guideResult!.visualCues.isNotEmpty) ...[
             const Text(
               'Visual Cues',
               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
             ),
             const SizedBox(height: 8),
-            ...(_guideResult!['cue_overlays'] as List<dynamic>).map(
+            ..._guideResult!.visualCues.map(
               (cue) => Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
@@ -409,9 +595,32 @@ class GuideImageTabState extends State<GuideImageTab> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(cue as String, style: const TextStyle(fontSize: 16)),
+                    Expanded(child: Text(cue, style: const TextStyle(fontSize: 16))),
                   ],
                 ),
+              ),
+            ),
+            // Target state label
+            if (_guideResult!.targetState.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Target: ${_guideResult!.targetState}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+          ],
+
+          // Error
+          if (_error != null) ...[
+            Card(
+              color: theme.colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(_error!, style: TextStyle(color: theme.colorScheme.onErrorContainer)),
               ),
             ),
             const SizedBox(height: 16),
@@ -419,7 +628,7 @@ class GuideImageTabState extends State<GuideImageTab> {
 
           // Stage selector
           DropdownButtonFormField<String>(
-            value: _stageLabel,
+            initialValue: _stageLabel,
             decoration: const InputDecoration(
               labelText: 'Target Stage',
               prefixIcon: Icon(Icons.layers),
@@ -461,7 +670,7 @@ class GuideImageTabState extends State<GuideImageTab> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () {},
+                    onPressed: () => context.go(AppRoutes.sessionPath(widget.sessionId)),
                     child: const Text('Looks Right'),
                   ),
                 ),
@@ -470,13 +679,6 @@ class GuideImageTabState extends State<GuideImageTab> {
                   child: OutlinedButton(
                     onPressed: _requestGuide,
                     child: const Text('Another Stage'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {},
-                    child: const Text('Explain Cues'),
                   ),
                 ),
               ],
@@ -488,7 +690,9 @@ class GuideImageTabState extends State<GuideImageTab> {
 }
 
 // =============================================================================
-// Taste Check Tab
+// Taste Check Tab (Task 6.3)
+// — Wired to real API via SessionApiService.tasteCheck()
+// — Conversational style: prompt → chips/text → dimensions + recommendation
 // =============================================================================
 
 class TasteCheckTab extends StatefulWidget {
@@ -504,8 +708,10 @@ class TasteCheckTab extends StatefulWidget {
 class TasteCheckTabState extends State<TasteCheckTab> {
   final _descriptionController = TextEditingController();
   bool _loading = false;
-  Map<String, dynamic>? _result;
+  TasteCheckResponse? _apiResult;
   bool _showDiagnostic = false;
+  bool _prompted = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -515,12 +721,10 @@ class TasteCheckTabState extends State<TasteCheckTab> {
 
   void _promptTaste() {
     setState(() {
-      _result = {
-        'type': 'taste_prompt',
-        'message': 'Good moment to taste! Take a small spoonful and tell me how it is.',
-        'dimensions': ['salt', 'acid', 'sweet', 'fat', 'umami'],
-      };
+      _prompted = true;
       _showDiagnostic = true;
+      _apiResult = null;
+      _error = null;
     });
   }
 
@@ -528,19 +732,47 @@ class TasteCheckTabState extends State<TasteCheckTab> {
     final description = _descriptionController.text.trim();
     if (description.isEmpty) return;
 
-    setState(() => _loading = true);
-    // Placeholder — in real app, calls API
-    await Future.delayed(const Duration(milliseconds: 500));
     setState(() {
-      _loading = false;
-      _result = {
-        'type': 'taste_result',
-        'message': 'Based on your description, try adding a squeeze of lemon for brightness. About half a lemon should do it.',
-        'step': 1,
-        'stage': 'mid',
-      };
-      _showDiagnostic = false;
+      _loading = true;
+      _error = null;
     });
+
+    try {
+      final api = widget.apiClient ?? context.read<ApiClient>();
+      final sessionApi = SessionApiService(api: api);
+      final response = await sessionApi.tasteCheck(
+        widget.sessionId,
+        diagnostic: description,
+      );
+
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _apiResult = response;
+          _showDiagnostic = false;
+          _prompted = false;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Taste check failed: ${e.message}';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Something went wrong. Please try again.';
+        });
+      }
+    }
+  }
+
+  void _selectChip(String text) {
+    _descriptionController.text = text;
+    _submitTaste();
   }
 
   @override
@@ -552,100 +784,89 @@ class TasteCheckTabState extends State<TasteCheckTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Taste dimensions visual
+          // Conversational prompt
           Card(
+            color: Colors.amber.shade50,
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text('Five Taste Dimensions', style: theme.textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  const _TasteDimensionRow(label: 'Salt', icon: Icons.grain, color: Colors.blue),
-                  const _TasteDimensionRow(label: 'Acid', icon: Icons.water_drop, color: Colors.yellow),
-                  const _TasteDimensionRow(label: 'Sweet', icon: Icons.cake, color: Colors.pink),
-                  const _TasteDimensionRow(label: 'Fat', icon: Icons.opacity, color: Colors.amber),
-                  const _TasteDimensionRow(label: 'Umami', icon: Icons.restaurant_menu, color: Colors.deepPurple),
+                  Icon(Icons.restaurant, color: Colors.amber.shade800, size: 28),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _prompted
+                          ? 'Take a small spoonful and tell me — how does it taste?'
+                          : 'Ready for a taste check? Tap below when you are.',
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, height: 1.4),
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
 
-          // Prompt button
-          SizedBox(
-            height: 56,
-            child: ElevatedButton.icon(
-              onPressed: _promptTaste,
-              icon: const Icon(Icons.restaurant, size: 24),
-              label: const Text('Taste Check', style: TextStyle(fontSize: 18)),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Prompt result
-          if (_result != null && _result!['type'] == 'taste_prompt') ...[
-            Card(
-              color: Colors.amber.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(Icons.restaurant, color: Colors.amber.shade800),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _result!['message'] as String,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                      ),
-                    ),
-                  ],
-                ),
+          // Prompt button (hidden once prompted)
+          if (!_prompted && _apiResult == null)
+            SizedBox(
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed: _promptTaste,
+                icon: const Icon(Icons.restaurant, size: 24),
+                label: const Text('Taste Check', style: TextStyle(fontSize: 18)),
               ),
             ),
-            const SizedBox(height: 12),
-          ],
 
-          // Diagnostic input — quick chips are primary, text is optional fallback
+          // Diagnostic input — conversational chips first, text fallback
           if (_showDiagnostic) ...[
-            // Quick diagnostic buttons (voice-free, tap-based — primary interaction)
+            const SizedBox(height: 8),
+            const Text(
+              'Quick answers:',
+              style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                _QuickTasteChip(label: "It's flat", onTap: () {
-                  _descriptionController.text = "It tastes flat and dull";
-                }),
-                _QuickTasteChip(label: "Too sharp", onTap: () {
-                  _descriptionController.text = "It tastes sharp and too bright";
-                }),
-                _QuickTasteChip(label: "Something's missing", onTap: () {
-                  _descriptionController.text = "Something is missing, it tastes one-note";
-                }),
-                _QuickTasteChip(label: "Too salty", onTap: () {
-                  _descriptionController.text = "It's too salty";
-                }),
+                _QuickTasteChip(
+                  label: "It's flat",
+                  onTap: () => _selectChip("It tastes flat and dull"),
+                ),
+                _QuickTasteChip(
+                  label: "Too sharp",
+                  onTap: () => _selectChip("It tastes sharp and too bright"),
+                ),
+                _QuickTasteChip(
+                  label: "Something's missing",
+                  onTap: () => _selectChip("Something is missing, it tastes one-note"),
+                ),
+                _QuickTasteChip(
+                  label: "Too salty",
+                  onTap: () => _selectChip("It's too salty"),
+                ),
+                _QuickTasteChip(
+                  label: "Tastes great!",
+                  onTap: () => _selectChip("It tastes great, well balanced"),
+                ),
+                _QuickTasteChip(
+                  label: "Needs more heat",
+                  onTap: () => _selectChip("It needs more spice or heat"),
+                ),
               ],
             ),
             const SizedBox(height: 12),
-            // Optional text input (hidden behind expansion for voice-first UX)
-            ExpansionTile(
-              title: const Text('Or type your own description'),
-              initiallyExpanded: false,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: TextField(
-                    controller: _descriptionController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      hintText: 'How does it taste? (optional — use chips above or tell your buddy by voice)',
-                      labelText: 'Your taste feedback',
-                    ),
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ),
-              ],
+            // Text input — always visible in conversational mode
+            TextField(
+              controller: _descriptionController,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                hintText: 'Or describe in your own words...',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              style: const TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 12),
             SizedBox(
@@ -663,55 +884,132 @@ class TasteCheckTabState extends State<TasteCheckTab> {
             ),
           ],
 
-          // Taste result
-          if (_result != null && _result!['type'] == 'taste_result')
+          // Error
+          if (_error != null) ...[
+            const SizedBox(height: 12),
             Card(
+              color: theme.colorScheme.errorContainer,
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.lightbulb, color: theme.colorScheme.primary),
-                        const SizedBox(width: 8),
-                        Text('Recommendation', style: theme.textTheme.titleMedium),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      _result!['message'] as String,
-                      style: const TextStyle(fontSize: 16, height: 1.5),
-                    ),
-                  ],
-                ),
+                child: Text(_error!, style: TextStyle(color: theme.colorScheme.onErrorContainer)),
               ),
             ),
+          ],
+
+          // Taste result with dimensions + recommendation
+          if (_apiResult != null) ...[
+            const SizedBox(height: 16),
+            _TasteResultCard(result: _apiResult!),
+            const SizedBox(height: 12),
+            // Allow retasting
+            SizedBox(
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: _promptTaste,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Taste Again'),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _TasteDimensionRow extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Color color;
+/// Taste check result card showing dimensions and recommendation.
+class _TasteResultCard extends StatelessWidget {
+  final TasteCheckResponse result;
 
-  const _TasteDimensionRow({required this.label, required this.icon, required this.color});
+  const _TasteResultCard({required this.result});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(fontSize: 16)),
-        ],
+    final theme = Theme.of(context);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Recommendation header
+            Row(
+              children: [
+                Icon(Icons.lightbulb, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
+                Text('Recommendation', style: theme.textTheme.titleMedium),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              result.recommendation,
+              style: const TextStyle(fontSize: 16, height: 1.5),
+            ),
+
+            // Taste dimensions (if present)
+            if (result.dimensions.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text('Taste Balance', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              ...result.dimensions.entries.map((entry) {
+                final value = entry.value.clamp(0.0, 1.0);
+                final color = _dimensionColor(entry.key);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 56,
+                        child: Text(
+                          _capitalize(entry.key),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: LinearProgressIndicator(
+                          value: value,
+                          backgroundColor: color.withValues(alpha: 0.15),
+                          valueColor: AlwaysStoppedAnimation(color),
+                          minHeight: 8,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 32,
+                        child: Text(
+                          '${(value * 100).toInt()}%',
+                          style: const TextStyle(fontSize: 12),
+                          textAlign: TextAlign.right,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ],
+        ),
       ),
     );
+  }
+
+  static Color _dimensionColor(String dim) {
+    return switch (dim) {
+      'salt' => Colors.blue,
+      'acid' => Colors.yellow.shade700,
+      'sweet' => Colors.pink,
+      'fat' => Colors.amber,
+      'umami' => Colors.deepPurple,
+      _ => Colors.grey,
+    };
+  }
+
+  static String _capitalize(String s) {
+    if (s.isEmpty) return s;
+    return s[0].toUpperCase() + s.substring(1);
   }
 }
 
@@ -731,7 +1029,10 @@ class _QuickTasteChip extends StatelessWidget {
 }
 
 // =============================================================================
-// Recovery Tab
+// Recovery Tab (Task 6.4)
+// — Wired to real API via SessionApiService.recover()
+// — Instant-feel UX: immediateAction in large bold text first,
+//   then explanation + alternatives
 // =============================================================================
 
 class RecoveryTab extends StatefulWidget {
@@ -747,7 +1048,8 @@ class RecoveryTab extends StatefulWidget {
 class RecoveryTabState extends State<RecoveryTab> {
   final _errorController = TextEditingController();
   bool _loading = false;
-  Map<String, dynamic>? _result;
+  RecoveryResponse? _apiResult;
+  String? _error;
 
   @override
   void dispose() {
@@ -755,26 +1057,51 @@ class RecoveryTabState extends State<RecoveryTab> {
     super.dispose();
   }
 
-  Future<void> _submitRecovery() async {
-    final desc = _errorController.text.trim();
+  Future<void> _submitRecovery([String? quickIssue]) async {
+    final desc = quickIssue ?? _errorController.text.trim();
     if (desc.isEmpty) return;
 
-    setState(() => _loading = true);
-    // Placeholder — in real app, calls /recover endpoint
-    await Future.delayed(const Duration(milliseconds: 500));
     setState(() {
-      _loading = false;
-      _result = {
-        'type': 'recovery',
-        'message': 'Take the pan off heat NOW.\n\nIt happens to everyone — garlic goes from golden to burnt fast.\n\nIt\'s a bit darker than ideal, but still usable.\n\nPick out the darkest pieces. The slight bitterness will actually complement the chili.',
-        'step': 1,
-        'techniques_affected': ['sauteing'],
-      };
+      _loading = true;
+      _error = null;
+      _apiResult = null;
     });
+
+    try {
+      final api = widget.apiClient ?? context.read<ApiClient>();
+      final sessionApi = SessionApiService(api: api);
+      final response = await sessionApi.recover(
+        widget.sessionId,
+        issue: desc,
+      );
+
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _apiResult = response;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Recovery failed: ${e.message}';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = 'Something went wrong. Please try again.';
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -794,7 +1121,7 @@ class RecoveryTabState extends State<RecoveryTab> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Something went wrong? Describe what happened and I\'ll help you recover.',
+                    'Something went wrong? Tap a quick option or describe what happened.',
                     style: TextStyle(fontSize: 16, color: Colors.red.shade900, height: 1.4),
                   ),
                 ),
@@ -803,48 +1130,45 @@ class RecoveryTabState extends State<RecoveryTab> {
           ),
           const SizedBox(height: 16),
 
-          // Quick error chips (tap-based, voice-free — primary interaction)
+          // Quick error chips — tapping submits immediately for instant-feel
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _QuickErrorChip(label: 'Burnt', onTap: () {
-                _errorController.text = 'It burnt';
-              }),
-              _QuickErrorChip(label: 'Overcooked', onTap: () {
-                _errorController.text = 'I overcooked it';
-              }),
-              _QuickErrorChip(label: 'Sauce broke', onTap: () {
-                _errorController.text = 'The sauce broke/split';
-              }),
-              _QuickErrorChip(label: 'Too salty', onTap: () {
-                _errorController.text = 'Added too much salt';
-              }),
-              _QuickErrorChip(label: 'Stuck to pan', onTap: () {
-                _errorController.text = 'Food stuck to the pan';
-              }),
+              _QuickErrorChip(
+                label: 'Burnt',
+                onTap: () => _submitRecovery('It burnt'),
+              ),
+              _QuickErrorChip(
+                label: 'Overcooked',
+                onTap: () => _submitRecovery('I overcooked it'),
+              ),
+              _QuickErrorChip(
+                label: 'Sauce broke',
+                onTap: () => _submitRecovery('The sauce broke/split'),
+              ),
+              _QuickErrorChip(
+                label: 'Too salty',
+                onTap: () => _submitRecovery('Added too much salt'),
+              ),
+              _QuickErrorChip(
+                label: 'Stuck to pan',
+                onTap: () => _submitRecovery('Food stuck to the pan'),
+              ),
             ],
           ),
           const SizedBox(height: 12),
 
-          // Optional text input (hidden behind expansion for voice-first UX)
-          ExpansionTile(
-            title: const Text('Or describe in your own words'),
-            initiallyExpanded: false,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: TextField(
-                  controller: _errorController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    hintText: 'What happened? (optional — use chips above or tell your buddy by voice)',
-                    labelText: 'Describe the issue',
-                  ),
-                  style: const TextStyle(fontSize: 16),
-                ),
-              ),
-            ],
+          // Text input — visible (not behind expansion) for faster access
+          TextField(
+            controller: _errorController,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              hintText: 'Or describe in your own words...',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            style: const TextStyle(fontSize: 16),
           ),
           const SizedBox(height: 16),
 
@@ -852,7 +1176,7 @@ class RecoveryTabState extends State<RecoveryTab> {
           SizedBox(
             height: 56,
             child: ElevatedButton.icon(
-              onPressed: _loading ? null : _submitRecovery,
+              onPressed: _loading ? null : () => _submitRecovery(),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.shade600,
               ),
@@ -871,8 +1195,18 @@ class RecoveryTabState extends State<RecoveryTab> {
           ),
           const SizedBox(height: 20),
 
-          // Recovery result — emergency card
-          if (_result != null) RecoveryCard(result: _result!),
+          // Error display
+          if (_error != null)
+            Card(
+              color: theme.colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(_error!, style: TextStyle(color: theme.colorScheme.onErrorContainer)),
+              ),
+            ),
+
+          // Recovery result — instant-feel UX card
+          if (_apiResult != null) _RecoveryResultCard(result: _apiResult!),
         ],
       ),
     );
@@ -895,45 +1229,50 @@ class _QuickErrorChip extends StatelessWidget {
   }
 }
 
-/// Emergency-style recovery card with "Do this now" at top.
-class RecoveryCard extends StatelessWidget {
-  final Map<String, dynamic> result;
+/// Recovery result card with instant-feel UX:
+/// - immediateAction shown in large bold text at top (red banner)
+/// - explanation below
+/// - alternatives as actionable items
+class _RecoveryResultCard extends StatelessWidget {
+  final RecoveryResponse result;
 
-  const RecoveryCard({super.key, required this.result});
+  const _RecoveryResultCard({required this.result});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final message = result['message'] as String? ?? '';
-    final techniques = (result['techniques_affected'] as List<dynamic>?) ?? [];
 
-    // Split message into sections (paragraphs)
-    final sections = message.split('\n\n').where((s) => s.trim().isNotEmpty).toList();
+    final severityColor = switch (result.severity) {
+      'critical' => Colors.red.shade700,
+      'high' => Colors.red.shade600,
+      'medium' => Colors.orange.shade700,
+      _ => Colors.amber.shade700,
+    };
 
     return Card(
       elevation: 3,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Top: immediate action — high contrast
-          if (sections.isNotEmpty)
+          // Immediate action — large bold text, high contrast (instant-feel)
+          if (result.immediateAction.isNotEmpty)
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.red.shade600,
+                color: severityColor,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.priority_high, color: Colors.white, size: 24),
+                  const Icon(Icons.priority_high, color: Colors.white, size: 28),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      sections.first,
+                      result.immediateAction,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 18,
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
                         height: 1.3,
                       ),
@@ -943,30 +1282,43 @@ class RecoveryCard extends StatelessWidget {
               ),
             ),
 
-          // Remaining sections
+          // Explanation
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (int i = 1; i < sections.length; i++) ...[
-                  if (i > 1) const SizedBox(height: 12),
+                if (result.explanation.isNotEmpty) ...[
                   Text(
-                    sections[i],
+                    result.explanation,
                     style: theme.textTheme.bodyLarge?.copyWith(fontSize: 16, height: 1.5),
                   ),
                 ],
-                if (techniques.isNotEmpty) ...[
+
+                // Alternative actions
+                if (result.alternativeActions.isNotEmpty) ...[
                   const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 8,
-                    children: techniques
-                        .map((t) => Chip(
-                              avatar: const Icon(Icons.info_outline, size: 16),
-                              label: Text(t.toString()),
-                            ))
-                        .toList(),
+                  Text(
+                    'Alternatives',
+                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
                   ),
+                  const SizedBox(height: 8),
+                  ...result.alternativeActions.map((alt) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.arrow_right, size: 20, color: theme.colorScheme.primary),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                alt,
+                                style: const TextStyle(fontSize: 15, height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )),
                 ],
               ],
             ),
