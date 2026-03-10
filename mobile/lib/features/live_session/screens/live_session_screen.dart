@@ -356,6 +356,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     final priority = msg['priority'] as String? ?? 'P2';
     _lastBuddyMessage = msg['message'] as String? ?? '$processName is done!';
 
+    // Play system alert sound for timer completion
+    SystemSound.play(SystemSoundType.alert);
+
     // P0 critical interrupt: haptics + red banner
     if (priority == 'P0') {
       HapticFeedback.heavyImpact();
@@ -366,6 +369,8 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   void _handleTimerWarning(Map<String, dynamic> msg) {
     final processName = msg['process_name'] as String? ?? 'Timer';
     final remaining = msg['remaining_seconds'] as int? ?? 60;
+    // Play system alert sound for timer warning
+    SystemSound.play(SystemSoundType.alert);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
