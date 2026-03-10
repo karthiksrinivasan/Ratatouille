@@ -85,17 +85,12 @@ class _IngredientChecklistScreenState extends State<IngredientChecklistScreen> {
                           ),
                         ),
                       ),
-                    ElevatedButton.icon(
-                      onPressed: _checks.isEmpty ? null : _startSession,
+                    FilledButton.icon(
+                      onPressed: _allChecked ? _startCooking : null,
                       icon: const Icon(Icons.local_fire_department),
-                      label: Text(_allChecked
-                          ? 'Start Cooking'
-                          : 'Start Anyway'),
-                      style: ElevatedButton.styleFrom(
+                      label: const Text('Start Cooking'),
+                      style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(52),
-                        backgroundColor: _allChecked
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.secondary,
                       ),
                     ),
                   ],
@@ -142,62 +137,8 @@ class _IngredientChecklistScreenState extends State<IngredientChecklistScreen> {
     );
   }
 
-  void _startSession() {
-    // Navigate to session setup.
-    // The session creation endpoint will be in Epic 4; for now navigate
-    // forward with recipe context preserved.
-    if (!_allChecked) {
-      _showMissingSummary();
-    } else {
-      _proceedToSession();
-    }
-  }
-
-  void _showMissingSummary() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Missing ingredients'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('You are missing:'),
-            const SizedBox(height: 8),
-            ..._missing.map((c) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    children: [
-                      Icon(Icons.circle, size: 6,
-                          color: Theme.of(context).colorScheme.error),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(c.ingredient)),
-                    ],
-                  ),
-                )),
-            const SizedBox(height: 12),
-            const Text('Continue anyway?'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Go back'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _proceedToSession();
-            },
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _proceedToSession() {
-    // For now, show a snackbar indicating session handoff.
+  void _startCooking() {
+    // Navigate to session setup with recipe context.
     // Session creation (Epic 4) will handle POST /v1/sessions.
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
