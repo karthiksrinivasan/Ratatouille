@@ -265,6 +265,14 @@ class _IngredientReviewScreenState extends State<IngredientReviewScreen> {
     }
   }
 
+  Future<void> _startVoiceDictation(ScanProvider provider) async {
+    // TODO: Wire to real speech-to-text endpoint via Gemini
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Voice dictation - listening...')),
+    );
+  }
+
   Widget _buildAddField(ScanProvider provider, ThemeData theme) {
     return Row(
       children: [
@@ -281,6 +289,12 @@ class _IngredientReviewScreenState extends State<IngredientReviewScreen> {
           ),
         ),
         const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.mic),
+          tooltip: 'Dictate ingredient',
+          onPressed: () => _startVoiceDictation(provider),
+        ),
+        const SizedBox(width: 4),
         IconButton.filled(
           onPressed: () => _addIngredient(provider),
           icon: const Icon(Icons.add),
