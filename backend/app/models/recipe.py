@@ -63,5 +63,6 @@ class Recipe(RecipeCreate):
     uid: str = ""  # Owner user ID
     technique_tags: list[str] = Field(default_factory=list)  # Aggregated from all steps
     ingredients_normalized: list[str] = Field(default_factory=list)  # Flat list for matching
+    checklist_gate: list[str] = []  # Ingredient checklist items before cooking
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

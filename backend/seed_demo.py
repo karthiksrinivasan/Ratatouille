@@ -97,7 +97,7 @@ DEMO_RECIPE = {
             "instruction": "Cook spaghetti in boiling water until 1 minute short of al dente. Reserve 1 cup of pasta water before draining.",
             "technique_tags": ["boil"],
             "duration_minutes": 9,
-            "is_parallel": False,
+            "is_parallel": True,
             "guide_image_prompt": "Spaghetti cooking in boiling water, slightly firm when bent. A measuring cup scooping cloudy starchy pasta water.",
         },
         {
@@ -132,6 +132,15 @@ DEMO_RECIPE = {
             "is_parallel": False,
             "guide_image_prompt": "Plated spaghetti aglio e olio, glistening with sauce, flecks of parsley and chili visible, parmesan dusted on top. Rustic plate.",
         },
+    ],
+    "checklist_gate": [
+        "Spaghetti (200g)",
+        "Garlic (6 cloves)",
+        "Extra virgin olive oil (80ml)",
+        "Red chili flakes (1 tsp)",
+        "Fresh parsley (1 bunch)",
+        "Parmesan cheese (30g)",
+        "Salt",
     ],
     "technique_tags": ["boil", "slice", "saute", "emulsify", "fold"],
     "ingredients_normalized": [
