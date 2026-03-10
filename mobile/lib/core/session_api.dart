@@ -247,6 +247,27 @@ class SessionApiService {
     }
   }
 
+  /// POST /v1/sessions/{id}/wind-down/memory — confirm or decline memory save
+  Future<Map<String, dynamic>> saveMemory(
+    String sessionId, {
+    required bool confirmed,
+    List<String> observations = const [],
+  }) async {
+    try {
+      final data = await _api.postWithRetry(
+        '/v1/sessions/$sessionId/wind-down/memory',
+        body: {
+          'confirmed': confirmed,
+          'observations': observations,
+        },
+      );
+      return data;
+    } catch (e) {
+      _logContractError('wind-down/memory', e);
+      rethrow;
+    }
+  }
+
   /// POST /v1/sessions/{id}/complete
   Future<CompleteResponse> complete(String sessionId) async {
     try {

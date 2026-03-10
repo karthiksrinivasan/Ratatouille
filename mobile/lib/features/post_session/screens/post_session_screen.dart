@@ -48,18 +48,57 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
     }
   }
 
-  void _confirmMemory() {
+  Future<void> _confirmMemory() async {
     setState(() {
       _memoryConfirmed = true;
       _showMemoryPrompt = false;
     });
+
+    // Persist memory confirmation to backend
+    try {
+      final api = context.read<ApiClient>();
+      final sessionApi = SessionApiService(api: api);
+      // Extract observations from summary if available
+      final observations = <String>[];
+      if (_summary?.summary != null) {
+        final summaryMap = _summary!.summary!;
+        if (summaryMap['observations'] is List) {
+          observations.addAll(
+            (summaryMap['observations'] as List).cast<String>(),
+          );
+        }
+      }
+      // Default observation when none extracted from summary
+      if (observations.isEmpty) {
+        observations.add('User completed session ${widget.sessionId}');
+      }
+      await sessionApi.saveMemory(
+        widget.sessionId,
+        confirmed: true,
+        observations: observations,
+      );
+    } catch (_) {
+      // Memory save is best-effort — don't block the user
+    }
   }
 
-  void _declineMemory() {
+  Future<void> _declineMemory() async {
     setState(() {
       _memoryConfirmed = false;
       _showMemoryPrompt = false;
     });
+
+    // Notify backend that memory was declined
+    try {
+      final api = context.read<ApiClient>();
+      final sessionApi = SessionApiService(api: api);
+      await sessionApi.saveMemory(
+        widget.sessionId,
+        confirmed: false,
+      );
+    } catch (_) {
+      // Best-effort
+    }
   }
 
   @override
