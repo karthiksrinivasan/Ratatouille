@@ -779,13 +779,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
               ),
             ),
 
-          // Degraded/text input mode (no mic permission fallback)
+          // D9.2/D9.13: Floating text input above call chrome with option chips
           if (_textInputMode)
             Positioned(
-              left: 16,
-              right: 16,
-              bottom: 130,
-              child: _TextInputBar(
+              left: 12,
+              right: 12,
+              bottom: 130, // Above call chrome
+              child: _DegradedTextInput(
                 controller: _textController,
                 onSend: _sendTextQuery,
               ),
@@ -912,53 +912,93 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   }
 }
 
-/// Text input bar for degraded (text-only) mode.
-class _TextInputBar extends StatelessWidget {
+/// D9.2/D9.13: Floating text input with voice-first context capture chips.
+///
+/// Positioned above call chrome as a floating overlay. Includes predefined
+/// option chips for common cooking queries so users can tap instead of type.
+class _DegradedTextInput extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onSend;
 
-  const _TextInputBar({
+  /// Predefined option chips for quick context capture.
+  static const _quickOptions = [
+    'Next step',
+    'Does this look right?',
+    'How long?',
+    'What temp?',
+    'Help!',
+  ];
+
+  const _DegradedTextInput({
     required this.controller,
     required this.onSend,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'Type your question...',
-                hintStyle: TextStyle(color: Colors.white54),
-                isDense: true,
-                border: InputBorder.none,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-              textInputAction: TextInputAction.send,
-              onSubmitted: (text) {
-                if (text.trim().isNotEmpty) onSend(text.trim());
-              },
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.send, color: Colors.white70),
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.isNotEmpty) onSend(text);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Quick-action chips
+        SizedBox(
+          height: 36,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _quickOptions.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (_, i) {
+              return ActionChip(
+                label: Text(
+                  _quickOptions[i],
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+                backgroundColor: Colors.white24,
+                side: BorderSide.none,
+                onPressed: () => onSend(_quickOptions[i]),
+              );
             },
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 8),
+        // Text input field
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.black54,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  decoration: const InputDecoration(
+                    hintText: 'Type your question...',
+                    hintStyle: TextStyle(color: Colors.white54),
+                    isDense: true,
+                    border: InputBorder.none,
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (text) {
+                    if (text.trim().isNotEmpty) onSend(text.trim());
+                  },
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.send, color: Colors.white70),
+                onPressed: () {
+                  final text = controller.text.trim();
+                  if (text.isNotEmpty) onSend(text);
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
