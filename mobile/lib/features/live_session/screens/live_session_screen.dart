@@ -274,6 +274,19 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         case 'conflict_resolved':
           _conflictOptions = null;
           _conflictMessage = null;
+          // Show toast when buddy auto-resolved a conflict
+          final autoResolved = msg['auto_resolved'] as bool? ?? false;
+          if (autoResolved) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Buddy handled it — keeping the more urgent process going'),
+                  duration: Duration(seconds: 4),
+                ),
+              );
+            });
+          }
           break;
 
         // --- Session state ---
