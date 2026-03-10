@@ -353,4 +353,4 @@ Backend analytics/metrics/logging present. Mobile memory gate has no persistence
 | 7 | 2 fixes | 7 fixes + demo validation | Subagent |
 | 8 | 0 | 18 (infra + accessibility + contracts) | `/frontend-design` + `/ui-ux-pro-max` |
 | 9 | 1 audit | 16 fixes (+ metrics, browse fallback, audit matrix) | Subagent |
-| **Total** | **~12** | **~90** |  |
+| **Total** | **\~12** | **\~90** |  |
