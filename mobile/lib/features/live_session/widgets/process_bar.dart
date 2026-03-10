@@ -56,6 +56,8 @@ class CookingProcess {
 ///
 /// Shows all active processes sorted by priority, with visual treatment
 /// per state (countdown, needs_attention, passive, etc.).
+/// Priority-based coloring: P0=red(pulsing), P1=amber, P2=primary,
+/// P3/P4=grey. Countdown chips show mm:ss with <60s amber pulse.
 class ProcessBar extends StatefulWidget {
   final List<CookingProcess> processes;
   final List<String> attentionNeeded;
@@ -164,7 +166,10 @@ class _ProcessBarState extends State<ProcessBar> {
 }
 
 /// Individual process chip with priority-based visual treatment.
-class _ProcessChip extends StatelessWidget {
+///
+/// P0 chips pulse continuously. Countdown chips show mm:ss.
+/// At <60s remaining, chips switch to amber with pulse animation.
+class _ProcessChip extends StatefulWidget {
   final CookingProcess process;
   final bool needsAttention;
   final VoidCallback? onTap;
@@ -178,18 +183,89 @@ class _ProcessChip extends StatelessWidget {
   });
 
   @override
+  State<_ProcessChip> createState() => _ProcessChipState();
+}
+
+class _ProcessChipState extends State<_ProcessChip>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulseAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 0.4).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    _updatePulse();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProcessChip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _updatePulse();
+  }
+
+  void _updatePulse() {
+    final shouldPulse = _shouldPulse;
+    if (shouldPulse && !_pulseController.isAnimating) {
+      _pulseController.repeat(reverse: true);
+    } else if (!shouldPulse && _pulseController.isAnimating) {
+      _pulseController.stop();
+      _pulseController.value = 0.0;
+    }
+  }
+
+  bool get _shouldPulse {
+    // P0 always pulses
+    if (widget.process.priority == 'P0') return true;
+    // Countdown with <60s remaining pulses
+    if (widget.process.state == 'countdown') {
+      final remaining = widget.process.remainingSeconds;
+      if (remaining != null && remaining < 60) return true;
+    }
+    return false;
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  Color _priorityColor(BuildContext context, String priority) {
+    return switch (priority) {
+      'P0' => Colors.red,
+      'P1' => Colors.amber.shade700,
+      'P2' => Theme.of(context).colorScheme.primary,
+      'P3' => Colors.grey.shade500,
+      'P4' => Colors.grey.shade400,
+      _ => Colors.grey,
+    };
+  }
+
+  @override
   Widget build(BuildContext context) {
     final (bgColor, fgColor, icon) = _stateStyle(context);
+    final priorityColor = _priorityColor(context, widget.process.priority);
 
-    return Material(
+    Widget chip = Material(
       color: bgColor,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        onLongPress: onLongPress,
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: priorityColor, width: 1.5),
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -207,7 +283,7 @@ class _ProcessChip extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (process.buddyManaged) ...[
+              if (widget.process.buddyManaged) ...[
                 const SizedBox(width: 4),
                 Icon(Icons.smart_toy, size: 14, color: fgColor),
               ],
@@ -216,34 +292,63 @@ class _ProcessChip extends StatelessWidget {
         ),
       ),
     );
+
+    // Wrap in pulse animation for P0 or <60s countdown
+    if (_shouldPulse) {
+      chip = AnimatedBuilder(
+        animation: _pulseAnimation,
+        builder: (context, child) {
+          return Opacity(
+            opacity: _pulseAnimation.value * 0.6 + 0.4, // Range: 0.4 - 1.0
+            child: child,
+          );
+        },
+        child: chip,
+      );
+    }
+
+    return chip;
   }
 
   String get _label {
-    if (process.state == 'countdown') {
-      final remaining = process.remainingSeconds;
+    if (widget.process.state == 'countdown') {
+      final remaining = widget.process.remainingSeconds;
       if (remaining != null) {
         final min = remaining ~/ 60;
         final sec = remaining % 60;
-        return '${process.name.split(':').last.trim().substring(0, (process.name.split(':').last.trim().length).clamp(0, 8))} $min:${sec.toString().padLeft(2, '0')}';
+        final shortName = widget.process.name.split(':').last.trim();
+        final truncName = shortName.length > 8 ? shortName.substring(0, 8) : shortName;
+        return '$truncName $min:${sec.toString().padLeft(2, '0')}';
       }
     }
-    final shortName = process.name.split(':').last.trim();
+    final shortName = widget.process.name.split(':').last.trim();
     return shortName.length > 15 ? '${shortName.substring(0, 15)}...' : shortName;
   }
 
   (Color, Color, IconData) _stateStyle(BuildContext context) {
-    switch (process.state) {
+    // For countdown with <60s, override to amber
+    if (widget.process.state == 'countdown') {
+      final remaining = widget.process.remainingSeconds;
+      if (remaining != null && remaining < 60) {
+        return (
+          Colors.amber.shade100,
+          Colors.amber.shade900,
+          Icons.timer,
+        );
+      }
+      return (
+        Colors.orange.shade100,
+        Colors.orange.shade800,
+        Icons.timer,
+      );
+    }
+
+    switch (widget.process.state) {
       case 'needs_attention':
         return (
           Colors.red.shade100,
           Colors.red.shade800,
           Icons.warning_amber_rounded,
-        );
-      case 'countdown':
-        return (
-          Colors.orange.shade100,
-          Colors.orange.shade800,
-          Icons.timer,
         );
       case 'in_progress':
         return (
