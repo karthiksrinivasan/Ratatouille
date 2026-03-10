@@ -218,10 +218,25 @@ class _PostSessionScreenState extends State<PostSessionScreen> {
       child: Column(
         children: [
           const SizedBox(height: Spacing.xxl),
-          CircularProgressIndicator(color: theme.colorScheme.primary),
+          // Subtle spinner for action (D8.15)
+          SizedBox(
+            width: 32,
+            height: 32,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: theme.colorScheme.primary,
+            ),
+          ),
           const SizedBox(height: Spacing.lg),
           Text('Wrapping up your session...',
               style: theme.textTheme.titleMedium),
+          const SizedBox(height: Spacing.sm),
+          Text(
+            'Generating your summary...',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );

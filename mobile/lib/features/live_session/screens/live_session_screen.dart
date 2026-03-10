@@ -489,6 +489,26 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     }
   }
 
+  /// D6.2: Inline vision check — capture frame from live camera and send for assessment.
+  Future<void> _inlineVisionCheck() async {
+    if (!_camera.isInitialized || !_ws.isConnected) return;
+    setState(() => _connectionLabel = 'Checking...');
+    try {
+      final framePath = await _camera.captureFrameToFile();
+      if (framePath != null) {
+        _ws.sendVisionCheck(framePath);
+      }
+    } catch (e) {
+      setState(() => _connectionLabel = 'Vision check failed');
+    }
+  }
+
+  /// D6.2: Request a guide image for the current step.
+  void _requestGuideImage() {
+    if (!_ws.isConnected) return;
+    _ws.send({'type': 'guide_request'});
+  }
+
   /// Task 4.14: Manual reconnect after max retries exhausted.
   void _handleReconnect() {
     setState(() {
@@ -758,10 +778,31 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   Widget _buildCameraPreview() {
     if (!_camera.isInitialized || _camera.controller == null) {
+      // Subtle pulsing placeholder instead of raw spinner (D8.15)
       return Container(
         color: Colors.black,
-        child: const Center(
-          child: CircularProgressIndicator(color: Colors.white54),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white.withValues(alpha: 0.4),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Setting up camera...',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
