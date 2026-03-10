@@ -260,6 +260,13 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
           _browseActive = false;
           _browseIngredients = [];
           _browseQuestion = null;
+          // Show buddy's transition message when switching to cooking mode
+          final browseText = msg['text'] as String?;
+          if (browseText != null && browseText.isNotEmpty) {
+            _lastBuddyMessage = browseText;
+            _buddyState = BuddyState.speaking;
+            _connectionLabel = 'Buddy speaking...';
+          }
           break;
 
         // --- Epic 5: Process events ---
