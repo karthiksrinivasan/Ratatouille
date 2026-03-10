@@ -1,24 +1,69 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
 /// Network connectivity state for the app.
 enum ConnectivityStatus { online, degraded, offline }
 
-/// Tracks network connectivity and exposes it to the widget tree.
+/// Tracks network connectivity using connectivity_plus and exposes it
+/// to the widget tree via [ChangeNotifier].
 class ConnectivityService extends ChangeNotifier {
-  ConnectivityStatus _status = ConnectivityStatus.online;
+  Connectivity? _connectivity;
+  StreamSubscription<ConnectivityResult>? _sub;
   Timer? _degradedTimer;
 
+  ConnectivityStatus _status = ConnectivityStatus.online;
+  bool _isOnline = true;
+
   ConnectivityStatus get status => _status;
-  bool get isOnline => _status == ConnectivityStatus.online;
+  bool get isOnline => _isOnline;
   bool get isOffline => _status == ConnectivityStatus.offline;
+
+  /// Create a connectivity service.
+  /// Pass [autoListen] = false for unit tests that lack platform channels.
+  ConnectivityService({bool autoListen = true}) {
+    if (autoListen) {
+      _connectivity = Connectivity();
+      _startListening();
+    }
+  }
+
+  void _startListening() {
+    _sub = _connectivity!.onConnectivityChanged.listen((result) {
+      final online = result != ConnectivityResult.none;
+      if (online != _isOnline) {
+        _isOnline = online;
+        if (online) {
+          markOnline();
+        } else {
+          markOffline();
+        }
+      }
+    });
+  }
+
+  /// Stream of connectivity changes (true = online, false = offline).
+  Stream<bool> get onStatusChange {
+    _connectivity ??= Connectivity();
+    return _connectivity!.onConnectivityChanged
+        .map((result) => result != ConnectivityResult.none);
+  }
+
+  /// Check connectivity right now.
+  Future<bool> checkNow() async {
+    _connectivity ??= Connectivity();
+    final result = await _connectivity!.checkConnectivity();
+    _isOnline = result != ConnectivityResult.none;
+    return _isOnline;
+  }
 
   /// Mark connectivity as online.
   void markOnline() {
     _degradedTimer?.cancel();
     if (_status != ConnectivityStatus.online) {
       _status = ConnectivityStatus.online;
+      _isOnline = true;
       notifyListeners();
     }
   }
@@ -35,6 +80,7 @@ class ConnectivityService extends ChangeNotifier {
   void markOffline() {
     if (_status != ConnectivityStatus.offline) {
       _status = ConnectivityStatus.offline;
+      _isOnline = false;
       notifyListeners();
     }
   }
@@ -60,6 +106,7 @@ class ConnectivityService extends ChangeNotifier {
   @override
   void dispose() {
     _degradedTimer?.cancel();
+    _sub?.cancel();
     super.dispose();
   }
 }

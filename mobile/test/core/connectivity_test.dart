@@ -6,7 +6,8 @@ void main() {
     late ConnectivityService service;
 
     setUp(() {
-      service = ConnectivityService();
+      // Use autoListen: false to avoid platform channel calls in tests.
+      service = ConnectivityService(autoListen: false);
     });
 
     tearDown(() {
@@ -22,7 +23,7 @@ void main() {
     test('markDegraded changes status', () {
       service.markDegraded();
       expect(service.status, ConnectivityStatus.degraded);
-      expect(service.isOnline, isFalse);
+      expect(service.isOnline, isTrue); // isOnline tracks real connectivity
       expect(service.isOffline, isFalse);
     });
 
@@ -75,6 +76,11 @@ void main() {
 
       service.markOnline(); // already online
       expect(notifyCount, 0);
+    });
+
+    test('ConnectivityService exposes an onStatusChange stream getter', () {
+      // We just verify the getter exists — actual stream requires platform.
+      expect(service.onStatusChange, isA<Stream<bool>>());
     });
   });
 }
