@@ -1,6 +1,7 @@
 """WebSocket live channel for real-time cooking sessions (Epic 4 + Epic 5)."""
 
 import logging
+import uuid as _uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from firebase_admin import auth as firebase_auth
@@ -485,10 +486,11 @@ async def live_session(websocket: WebSocket, session_id: str):
             elif event_type == "ping":
                 await websocket.send_json({"type": "pong"})
 
-            # Log event to Firestore events subcollection
+            # Log event to Firestore events subcollection with correlation ID
             await log_session_event(session_id, event_type, {
                 **data,
                 "uid": user["uid"],
+                "event_id": str(_uuid.uuid4()),
             })
 
     except WebSocketDisconnect:
