@@ -26,15 +26,38 @@ class _CookNowScreenState extends State<CookNowScreen> {
   bool _cameraEnabled = false;
   bool _showOptionalContext = false;
 
+  /// Timestamp when the screen was opened — for zero-setup funnel timing.
+  late final DateTime _entryTime;
+
   // Optional context (all skippable)
   final _goalController = TextEditingController();
   String? _selectedTime;
   static const _timeOptions = ['15 min', '30 min', '45 min', '1 hour'];
 
   @override
+  void initState() {
+    super.initState();
+    _entryTime = DateTime.now();
+    _emitAnalyticsEvent('zero_setup_entry_tapped');
+  }
+
+  @override
   void dispose() {
     _goalController.dispose();
     super.dispose();
+  }
+
+  /// Emit a product analytics event via the backend.
+  Future<void> _emitAnalyticsEvent(String eventType, [Map<String, dynamic>? metadata]) async {
+    try {
+      final api = context.read<ApiClient>();
+      await api.post('/v1/analytics/events', body: {
+        'event_type': eventType,
+        if (metadata != null) 'metadata': metadata,
+      });
+    } catch (e) {
+      debugPrint('Analytics event $eventType failed: $e');
+    }
   }
 
   Future<void> _startSession() async {
@@ -65,6 +88,15 @@ class _CookNowScreenState extends State<CookNowScreen> {
 
       final data = await api.postWithRetry('/v1/sessions', body: body);
       final sessionId = data['session_id'] as String? ?? '';
+
+      // Track zero-setup session creation
+      if (sessionId.isNotEmpty) {
+        final elapsed = DateTime.now().difference(_entryTime).inMilliseconds;
+        _emitAnalyticsEvent('zero_setup_session_created', {
+          'session_id': sessionId,
+          'entry_to_creation_ms': elapsed,
+        });
+      }
 
       if (sessionId.isEmpty) {
         if (mounted) {

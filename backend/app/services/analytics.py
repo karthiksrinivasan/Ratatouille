@@ -38,6 +38,7 @@ PRODUCT_EVENTS = {
     "zero_setup_session_completed": "Freestyle session completed",
     "browse_started": "User starts fridge/pantry live browse",
     "browse_completed": "User finishes live browse",
+    "zero_setup_time_to_first_instruction": "Time from zero-setup entry to first buddy instruction",
 }
 
 
