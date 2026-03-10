@@ -174,6 +174,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   void _onConnectionStateChanged() {
     if (!mounted) return;
+    final previousState = _buddyState;
     setState(() {
       if (_ws.maxRetriesReached) {
         _wsMaxRetriesReached = true;
@@ -193,6 +194,20 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
         }
       }
     });
+
+    // Show degradation toast when transitioning to degraded state (D7.8, D8.14)
+    if (_buddyState == BuddyState.degraded && previousState != BuddyState.degraded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Video unavailable — switching to voice only'),
+            duration: const Duration(seconds: 4),
+            backgroundColor: Colors.orange.shade700,
+          ),
+        );
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------
