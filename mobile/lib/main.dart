@@ -15,6 +15,7 @@ import 'core/auth_service.dart';
 import 'core/connectivity.dart';
 import 'features/recipes/providers/recipe_provider.dart';
 import 'features/scan/providers/scan_provider.dart';
+import 'shared/widgets/error_boundary.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,6 +56,9 @@ Future<void> main() async {
     );
     developer.log('Firebase Auth: app verification disabled for testing');
   }
+
+  // Install global error boundary before runApp.
+  setupErrorBoundary();
 
   // Create core services.
   final connectivityService = ConnectivityService();
