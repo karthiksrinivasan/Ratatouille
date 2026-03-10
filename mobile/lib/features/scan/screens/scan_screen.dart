@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/router.dart';
+import '../../../core/permission_service.dart';
 import '../../../shared/widgets/error_display.dart';
 import '../providers/scan_provider.dart';
 
@@ -22,8 +24,44 @@ class ScanScreen extends StatefulWidget {
 
 class _ScanScreenState extends State<ScanScreen> {
   final ImagePicker _picker = ImagePicker();
+  final PermissionService _permService = PermissionService();
+
+  /// Check camera permission before opening camera. Returns true if granted.
+  Future<bool> _ensureCameraPermission() async {
+    final result = await _permService.requestMicCamera();
+    if (result.cameraGranted) return true;
+
+    if (!mounted) return false;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Camera Access Needed'),
+        content: const Text(
+          'Ratatouille needs your camera to scan ingredients. '
+          'Please grant camera permission in Settings.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              openAppSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+    return false;
+  }
 
   Future<void> _pickFromCamera(ScanProvider provider) async {
+    final granted = await _ensureCameraPermission();
+    if (!granted) return;
+
     final image = await _picker.pickImage(
       source: ImageSource.camera,
       imageQuality: 85,
