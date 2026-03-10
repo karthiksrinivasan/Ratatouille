@@ -73,6 +73,8 @@ class NotificationService {
       'Tap to share quick feedback and save your preferences.',
       scheduledTime,
       _notificationDetails,
+      uiLocalNotificationDateInterpretation:
+          UILocalNotificationDateInterpretation.absoluteTime,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       matchDateTimeComponents: null,
     );
