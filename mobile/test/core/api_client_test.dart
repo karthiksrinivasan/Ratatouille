@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -216,6 +217,23 @@ void main() {
       );
 
       apiClient.dispose();
+    });
+
+    test('GET times out after default timeout', () async {
+      final client = http_testing.MockClient((request) async {
+        await Future.delayed(const Duration(seconds: 15));
+        return http.Response('{}', 200);
+      });
+
+      final api = ApiClient(
+        httpClient: client,
+        baseUrl: 'http://test',
+      );
+
+      expect(
+        () => api.get('/v1/health'),
+        throwsA(isA<TimeoutException>()),
+      );
     });
   });
 }

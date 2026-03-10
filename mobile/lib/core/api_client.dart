@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -47,6 +48,23 @@ class ApiClient {
         _baseUrl = baseUrl ??
             (authService != null ? EnvConfig.backendUrl : 'http://localhost');
 
+  static const Duration _defaultTimeout = Duration(seconds: 10);
+  static const Duration _aiTimeout = Duration(seconds: 30);
+
+  /// AI endpoint path fragments that get the longer timeout.
+  static const _aiPaths = [
+    'vision-check', 'visual-guide', 'taste-check', 'recover',
+  ];
+
+  Duration _timeoutFor(String path) {
+    if (_aiPaths.any((p) => path.contains(p))) return _aiTimeout;
+    return _defaultTimeout;
+  }
+
+  Future<T> _withTimeout<T>(Future<T> future, {Duration? timeout}) {
+    return future.timeout(timeout ?? _defaultTimeout);
+  }
+
   // ---------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------
@@ -58,7 +76,10 @@ class ApiClient {
   }) async {
     final uri = _buildUri(path, queryParams);
     final headers = await _authHeaders();
-    final response = await _httpClient.get(uri, headers: headers);
+    final response = await _withTimeout(
+      _httpClient.get(uri, headers: headers),
+      timeout: _timeoutFor(path),
+    );
     return _handleResponse(response);
   }
 
@@ -69,7 +90,10 @@ class ApiClient {
   }) async {
     final uri = _buildUri(path, queryParams);
     final headers = await _authHeaders();
-    final response = await _httpClient.get(uri, headers: headers);
+    final response = await _withTimeout(
+      _httpClient.get(uri, headers: headers),
+      timeout: _timeoutFor(path),
+    );
     return _handleListResponse(response);
   }
 
@@ -81,10 +105,13 @@ class ApiClient {
     final uri = _buildUri(path);
     final headers = await _authHeaders();
     headers[HttpHeaders.contentTypeHeader] = 'application/json';
-    final response = await _httpClient.post(
-      uri,
-      headers: headers,
-      body: body != null ? jsonEncode(body) : null,
+    final response = await _withTimeout(
+      _httpClient.post(
+        uri,
+        headers: headers,
+        body: body != null ? jsonEncode(body) : null,
+      ),
+      timeout: _timeoutFor(path),
     );
     return _handleResponse(response);
   }
@@ -97,10 +124,13 @@ class ApiClient {
     final uri = _buildUri(path);
     final headers = await _authHeaders();
     headers[HttpHeaders.contentTypeHeader] = 'application/json';
-    final response = await _httpClient.put(
-      uri,
-      headers: headers,
-      body: body != null ? jsonEncode(body) : null,
+    final response = await _withTimeout(
+      _httpClient.put(
+        uri,
+        headers: headers,
+        body: body != null ? jsonEncode(body) : null,
+      ),
+      timeout: _timeoutFor(path),
     );
     return _handleResponse(response);
   }
@@ -109,7 +139,10 @@ class ApiClient {
   Future<Map<String, dynamic>> delete(String path) async {
     final uri = _buildUri(path);
     final headers = await _authHeaders();
-    final response = await _httpClient.delete(uri, headers: headers);
+    final response = await _withTimeout(
+      _httpClient.delete(uri, headers: headers),
+      timeout: _timeoutFor(path),
+    );
     return _handleResponse(response);
   }
 
