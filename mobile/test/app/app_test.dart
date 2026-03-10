@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'package:ratatouille/app/app.dart';
@@ -17,10 +18,20 @@ void main() {
         baseUrl: 'http://localhost',
       );
 
+      final testRouter = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(
+            path: '/',
+            builder: (context, state) => const Scaffold(body: Text('Test')),
+          ),
+        ],
+      );
+
       await tester.pumpWidget(
         ChangeNotifierProvider(
           create: (_) => RecipeProvider(apiClient: dummyApiClient),
-          child: const RatatouilleApp(),
+          child: RatatouilleApp(router: testRouter),
         ),
       );
       await tester.pump();

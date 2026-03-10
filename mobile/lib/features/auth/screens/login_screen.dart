@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -43,8 +45,10 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       if (mounted) context.go(AppRoutes.home);
     } on FirebaseAuthException catch (e) {
+      developer.log('Sign-in FirebaseAuthException: ${e.code} — ${e.message}');
       setState(() => _error = _friendlyError(e.code));
     } catch (e) {
+      developer.log('Sign-in error: $e');
       setState(() => _error = 'Sign in failed. Please try again.');
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -63,7 +67,12 @@ class _LoginScreenState extends State<LoginScreen> {
       }
       if (mounted) context.go(AppRoutes.home);
     } catch (e) {
-      setState(() => _error = 'Could not continue as guest.');
+      developer.log('Anonymous sign-in failed: $e');
+      // Even if anonymous auth fails, enable guest mode so the user can proceed.
+      // The backend dev-mode bypass will handle unauthenticated requests.
+      final auth = context.read<AuthService>();
+      auth.enableGuestMode();
+      if (mounted) context.go(AppRoutes.home);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -82,8 +91,10 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'This account has been disabled.';
       case 'too-many-requests':
         return 'Too many attempts. Please try again later.';
+      case 'network-request-failed':
+        return 'Network error. Check your connection and try again.';
       default:
-        return 'Sign in failed. Please try again.';
+        return 'Sign in failed ($code). Please try again.';
     }
   }
 

@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -60,9 +62,11 @@ class _SignupScreenState extends State<SignupScreen> {
 
       if (mounted) context.go(AppRoutes.home);
     } on FirebaseAuthException catch (e) {
+      developer.log('Sign-up FirebaseAuthException: ${e.code} — ${e.message}');
       setState(() => _error = _friendlyError(e.code));
     } catch (e) {
-      setState(() => _error = 'Account creation failed. Please try again.');
+      developer.log('Sign-up error: $e');
+      setState(() => _error = 'Account creation failed: ${e.toString().split(']').last.trim()}');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -78,8 +82,10 @@ class _SignupScreenState extends State<SignupScreen> {
         return 'Password is too weak. Use at least 6 characters.';
       case 'credential-already-in-use':
         return 'This email is already linked to another account.';
+      case 'network-request-failed':
+        return 'Network error. Check your connection and try again.';
       default:
-        return 'Account creation failed. Please try again.';
+        return 'Account creation failed ($code). Please try again.';
     }
   }
 

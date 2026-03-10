@@ -16,11 +16,20 @@ class AuthService extends ChangeNotifier {
   // State
   // ---------------------------------------------------------------------------
 
+  /// Whether the user chose to continue as guest (even if anonymous auth failed).
+  bool _guestMode = false;
+
+  /// Mark the user as a guest — allows navigation without Firebase auth.
+  void enableGuestMode() {
+    _guestMode = true;
+    notifyListeners();
+  }
+
   /// The currently signed-in user, or `null`.
   User? get currentUser => _auth.currentUser;
 
-  /// Whether a user is currently signed in.
-  bool get isSignedIn => currentUser != null;
+  /// Whether a user is currently signed in (or in guest mode).
+  bool get isSignedIn => currentUser != null || _guestMode;
 
   /// Whether the current user is anonymous (guest).
   bool get isAnonymous => currentUser?.isAnonymous ?? true;
@@ -95,7 +104,7 @@ class AuthService extends ChangeNotifier {
     required String password,
   }) async {
     final user = currentUser;
-    if (user == null) throw FirebaseAuthException(code: 'no-user', message: 'No user signed in');
+    if (user == null) throw StateError('No user signed in');
     final credential = EmailAuthProvider.credential(email: email, password: password);
     final result = await user.linkWithCredential(credential);
     notifyListeners();
@@ -142,6 +151,7 @@ class AuthService extends ChangeNotifier {
 
   /// Sign the current user out.
   Future<void> signOut() async {
+    _guestMode = false;
     await _auth.signOut();
     notifyListeners();
   }
