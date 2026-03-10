@@ -272,14 +272,15 @@ class _VisionConfidenceCard extends StatelessWidget {
     final theme = Theme.of(context);
     final confidence = result.confidence;
 
+    // D6.11: Use high-contrast colors (>=4.5:1 against white badge text) for bright kitchen readability
     final (Color tierColor, String tierLabel, String tierMessage, bool showSensory) =
         confidence >= 0.8
-            ? (Colors.green, 'Looks great!', '', false)
+            ? (const Color(0xFF2E7D32), 'Looks great!', '', false) // green.shade800
             : confidence >= 0.5
-                ? (Colors.amber.shade700, 'Getting there', 'Try a sensory check to confirm.', true)
+                ? (const Color(0xFFF57F17), 'Getting there', 'Try a sensory check to confirm.', true) // amber.shade900
                 : confidence >= 0.2
-                    ? (Colors.orange, 'Hard to tell', 'Try repositioning for a clearer view.', false)
-                    : (Colors.red, 'Using sensory guidance instead', '', true);
+                    ? (const Color(0xFFE65100), 'Hard to tell', 'Try repositioning for a clearer view.', false) // orange.shade900
+                    : (const Color(0xFFC62828), 'Using sensory guidance instead', '', true); // red.shade800
 
     return Card(
       elevation: 2,
@@ -302,7 +303,7 @@ class _VisionConfidenceCard extends StatelessWidget {
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
-                      fontSize: 14,
+                      fontSize: 16, // D6.11: >=16sp for bright-kitchen readability
                     ),
                   ),
                 ),
