@@ -9,6 +9,7 @@ import '../../../app/router.dart';
 import '../../../core/audio_capture.dart';
 import '../../../core/audio_playback.dart';
 import '../../../core/camera_service.dart';
+import '../../../core/connectivity.dart';
 import '../../../core/permission_service.dart';
 import '../../../core/ws_client.dart';
 import '../../../core/auth_service.dart';
@@ -96,6 +97,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   Timer? _ambientFrameTimer;
   final TextEditingController _textController = TextEditingController();
 
+  // D8.3: Connectivity-driven auto-reconnect
+  StreamSubscription<bool>? _connectivitySub;
+
   // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
@@ -123,6 +127,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
     // 3. Connect WebSocket
     await _ws.connect(widget.sessionId);
     _startPingTimer();
+
+    // D8.3: Auto-reconnect WS when connectivity recovers
+    _connectivitySub = ConnectivityService().onStatusChange.listen((online) {
+      if (online && !_ws.isConnected && mounted) {
+        _ws.resetReconnect();
+        _ws.connect(widget.sessionId);
+      }
+    });
 
     // 4. Start audio capture if mic granted
     if (_micGranted) {
@@ -156,6 +168,7 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   void dispose() {
     _pingTimer?.cancel();
     _ambientFrameTimer?.cancel();
+    _connectivitySub?.cancel();
     _textController.dispose();
     _messageSub?.cancel();
     _ws.removeListener(_onConnectionStateChanged);
