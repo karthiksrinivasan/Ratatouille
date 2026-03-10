@@ -117,6 +117,45 @@ class ScanProvider extends ChangeNotifier {
     }
   }
 
+  /// Upload a video and detect ingredients from it.
+  Future<void> uploadVideoAndDetect(File videoFile) async {
+    _error = null;
+    _isLoading = true;
+    _phase = ScanPhase.uploading;
+    notifyListeners();
+
+    try {
+      // Step 1: Upload video
+      final scanResult = await _service.createVideoScan(
+        source: _source,
+        videoFile: videoFile,
+      );
+      _scanId = scanResult.scanId;
+
+      // Step 2: Detect
+      _phase = ScanPhase.detecting;
+      notifyListeners();
+
+      final detectResult = await _service.detectIngredients(_scanId!);
+      _detected = detectResult.detectedIngredients;
+      _lowConfidenceCount = detectResult.lowConfidenceCount;
+
+      // Pre-populate confirmed list with detected names
+      _confirmed = _detected.map((d) => d.nameNormalized).toList();
+
+      _phase = ScanPhase.reviewing;
+    } on ApiException catch (e) {
+      _error = e.message;
+      _phase = ScanPhase.idle;
+    } catch (e) {
+      _error = 'Failed to scan video. Please try again.';
+      _phase = ScanPhase.idle;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   /// Toggle an ingredient in the confirmed list.
   void toggleIngredient(String name) {
     if (_confirmed.contains(name)) {

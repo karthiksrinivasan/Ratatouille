@@ -79,6 +79,19 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
+  Future<void> _captureVideo(ScanProvider provider) async {
+    final granted = await _ensureCameraPermission();
+    if (!granted) return;
+
+    final video = await _picker.pickVideo(
+      source: ImageSource.camera,
+      maxDuration: const Duration(seconds: 10),
+    );
+    if (video != null) {
+      await provider.uploadVideoAndDetect(File(video.path));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -313,21 +326,35 @@ class _ScanScreenState extends State<ScanScreen> {
   Widget _buildCaptureButtons(ScanProvider provider, ThemeData theme) {
     final canAdd = provider.selectedImages.length < 6;
 
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: canAdd ? () => _pickFromCamera(provider) : null,
-            icon: const Icon(Icons.camera_alt),
-            label: const Text('Camera'),
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: canAdd ? () => _pickFromCamera(provider) : null,
+                icon: const Icon(Icons.camera_alt),
+                label: const Text('Camera'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: canAdd ? () => _pickFromGallery(provider) : null,
+                icon: const Icon(Icons.photo_library),
+                label: const Text('Gallery'),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: canAdd ? () => _pickFromGallery(provider) : null,
-            icon: const Icon(Icons.photo_library),
-            label: const Text('Gallery'),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => _captureVideo(provider),
+          icon: const Icon(Icons.videocam),
+          label: const Text('Scan with Video (3-10s)'),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 12),
           ),
         ),
       ],

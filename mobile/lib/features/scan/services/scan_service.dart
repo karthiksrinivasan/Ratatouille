@@ -54,6 +54,40 @@ class ScanService {
     throw ApiException(statusCode: response.statusCode, message: detail);
   }
 
+  /// Upload a video and create a scan with video-based detection.
+  /// Returns a [ScanCreateResponse] with the scan_id.
+  Future<ScanCreateResponse> createVideoScan({
+    required String source,
+    required File videoFile,
+  }) async {
+    final uri = Uri.parse('${EnvConfig.backendUrl}/v1/inventory-scans/video');
+    final request = http.MultipartRequest('POST', uri);
+
+    // Auth header.
+    if (_authService != null) {
+      final token = await _authService.getIdToken();
+      if (token != null) {
+        request.headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+      }
+    }
+
+    request.fields['source'] = source;
+    request.files.add(
+      await http.MultipartFile.fromPath('video', videoFile.path),
+    );
+
+    final streamedResponse = await http.Client().send(request);
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      return ScanCreateResponse.fromJson(body);
+    }
+
+    final detail = _extractError(response.body);
+    throw ApiException(statusCode: response.statusCode, message: detail);
+  }
+
   /// Trigger ingredient detection on a scan.
   Future<DetectResponse> detectIngredients(String scanId) async {
     final data = await _api.post('/v1/inventory-scans/$scanId/detect');
