@@ -1,0 +1,11 @@
+{
+  "session_id": "sess_fixture_001",
+  "assessment": "on_track",
+  "confidence": 0.87,
+  "stage": "sauteing",
+  "observations": [
+    "Garlic is golden, not brown",
+    "Oil temperature looks ideal"
+  ],
+  "recommendation": "Continue for 1-2 more minutes until fragrant."
+}

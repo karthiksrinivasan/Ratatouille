@@ -1,0 +1,5 @@
+{
+  "session_id": "sess_fixture_001",
+  "status": "active",
+  "ws_endpoint": "wss://api.ratatouille.example.com/v1/live/sess_fixture_001"
+}

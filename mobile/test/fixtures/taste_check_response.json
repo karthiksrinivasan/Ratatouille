@@ -1,0 +1,12 @@
+{
+  "session_id": "sess_fixture_001",
+  "dimensions": {
+    "salt": 0.65,
+    "acid": 0.3,
+    "sweet": 0.1,
+    "fat": 0.8,
+    "umami": 0.5
+  },
+  "recommendation": "A squeeze of lemon would brighten this up nicely.",
+  "confidence": "high"
+}

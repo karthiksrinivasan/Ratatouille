@@ -1,0 +1,10 @@
+{
+  "session_id": "sess_fixture_001",
+  "immediate_action": "Pull the pan off the heat right now.",
+  "explanation": "The garlic has gone past golden into dark brown territory, which means it's turning bitter.",
+  "alternative_actions": [
+    "Start fresh garlic in new oil",
+    "Use the current garlic but add extra chili flake to mask bitterness"
+  ],
+  "severity": "high"
+}

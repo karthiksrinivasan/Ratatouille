@@ -1,0 +1,11 @@
+{
+  "session_id": "sess_fixture_001",
+  "status": "completed",
+  "summary": {
+    "total_steps": 6,
+    "completed_steps": 6,
+    "duration_minutes": 28,
+    "vision_checks": 2,
+    "recovery_actions": 1
+  }
+}

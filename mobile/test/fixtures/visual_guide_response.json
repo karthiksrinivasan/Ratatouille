@@ -1,0 +1,10 @@
+{
+  "session_id": "sess_fixture_001",
+  "guide_image_url": "https://storage.googleapis.com/ratatouille-guides/aglio-e-olio/step3_golden_garlic.png",
+  "target_state": "golden_brown_garlic",
+  "visual_cues": [
+    "Light golden color, not dark",
+    "Slight sizzle, fragrant aroma"
+  ],
+  "stage": "sauteing_garlic"
+}
