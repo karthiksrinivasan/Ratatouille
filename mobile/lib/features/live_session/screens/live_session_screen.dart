@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
@@ -82,6 +83,9 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
   List<ConflictOption>? _conflictOptions;
   String? _conflictMessage;
   int _conflictTimeout = 30;
+
+  // P0 critical interrupt banner
+  String? _p0Alert;
 
   // Interrupted content
   String? _interruptedPreview;
@@ -349,7 +353,14 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
 
   void _handleTimerAlert(Map<String, dynamic> msg) {
     final processName = msg['process_name'] as String? ?? 'Timer';
+    final priority = msg['priority'] as String? ?? 'P2';
     _lastBuddyMessage = msg['message'] as String? ?? '$processName is done!';
+
+    // P0 critical interrupt: haptics + red banner
+    if (priority == 'P0') {
+      HapticFeedback.heavyImpact();
+      _p0Alert = msg['message'] as String? ?? '$processName needs immediate attention!';
+    }
   }
 
   void _handleTimerWarning(Map<String, dynamic> msg) {
@@ -647,6 +658,39 @@ class _LiveSessionScreenState extends State<LiveSessionScreen> {
               visualCues: _guideCues,
               onDismiss: _dismissGuide,
               cameraPip: _buildCameraPip(),
+            ),
+
+          // P0 critical interrupt red banner
+          if (_p0Alert != null)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 140,
+              left: 0,
+              right: 0,
+              child: GestureDetector(
+                onTap: () => setState(() => _p0Alert = null),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  color: Colors.red,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning, color: Colors.white, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _p0Alert!,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      const Icon(Icons.close, color: Colors.white70, size: 18),
+                    ],
+                  ),
+                ),
+              ),
             ),
 
           // Task 4.14: Reconnect button after max retries
