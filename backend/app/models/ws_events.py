@@ -9,6 +9,7 @@ VALID_EVENT_TYPES = [
     "vision_check", "context_update", "add_timer",
     "browse_start", "browse_frame", "browse_stop",
     "ambient_toggle", "resume_interrupted", "session_resume",
+    "guide_request",
     "ping", "auth",
 ]
 
@@ -26,6 +27,7 @@ class IncomingWsEvent(BaseModel):
     duration_minutes: Optional[float] = None
     enabled: Optional[bool] = None
     source: Optional[str] = None
+    prompt: Optional[str] = None
     token: Optional[str] = None
 
     def model_post_init(self, __context):

@@ -310,6 +310,46 @@ async def live_session(websocket: WebSocket, session_id: str):
                 response = await orchestrator.handle_vision_check(frame_uri)
                 await websocket.send_json(response)
 
+            elif event_type == "guide_request":
+                # D4.18: User-initiated guide image request
+                current_step = orchestrator.state.get("current_step", 1)
+                prompt = data.get("prompt")
+                step_data = {"step_number": current_step, "instruction": "current step"}
+                if recipe:
+                    steps = recipe.get("steps", [])
+                    step_idx = current_step - 1
+                    if 0 <= step_idx < len(steps):
+                        step_data = steps[step_idx]
+                if prompt:
+                    step_data = {**step_data, "guide_image_prompt": prompt}
+                try:
+                    guide_result = await guide_gen.generate_guide(
+                        step=step_data,
+                        stage_label=f"step_{current_step}_user_request",
+                        source_frame_uri=data.get("frame_uri"),
+                    )
+                    if "error" not in guide_result:
+                        await websocket.send_json({
+                            "type": "visual_guide",
+                            "image_url": guide_result["image_url"],
+                            "caption": f"Here's what step {current_step} should look like.",
+                            "visual_cues": guide_result.get("cue_overlays", []),
+                            "step": current_step,
+                        })
+                    else:
+                        await websocket.send_json({
+                            "type": "buddy_message",
+                            "text": "I couldn't generate a guide image right now — try describing what you'd like to see.",
+                            "step": current_step,
+                        })
+                except Exception as guide_err:
+                    logger.warning(f"User guide request failed: {guide_err}")
+                    await websocket.send_json({
+                        "type": "buddy_message",
+                        "text": "Guide image is taking too long — let me describe it instead.",
+                        "step": current_step,
+                    })
+
             elif event_type == "context_update":
                 # In-session context capture: update freestyle context mid-session
                 updates = data.get("context", {})
