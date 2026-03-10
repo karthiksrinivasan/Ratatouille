@@ -13,11 +13,19 @@ from app.services.storage import get_signed_url, upload_bytes
 class GuideImageGenerator:
     """Generates target-state visual guides with consistent style per session."""
 
+    # Class-level cache: session_id -> Gemini chat session for style consistency (D4.21)
+    _chat_cache: dict = {}
+
     def __init__(self, session_id: str, recipe_title: str):
         self.session_id = session_id
         self.recipe_title = recipe_title
         # Single chat session for style consistency (per tech guide §1)
-        self._chat = None
+        self._chat = GuideImageGenerator._chat_cache.get(session_id)
+
+    @classmethod
+    def invalidate_cache(cls, session_id: str):
+        """Remove a cached chat session (e.g. on session end)."""
+        cls._chat_cache.pop(session_id, None)
 
     def _get_chat(self):
         """Lazily create chat session so constructor doesn't call Gemini."""
@@ -38,6 +46,8 @@ Style rules:
 """,
                 ),
             )
+            # Cache for reuse across GuideImageGenerator instances with same session
+            GuideImageGenerator._chat_cache[self.session_id] = self._chat
         return self._chat
 
     async def generate_guide(
