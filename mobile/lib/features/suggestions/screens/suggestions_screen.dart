@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/router.dart';
+import '../../../core/api_client.dart';
+import '../../../core/session_api.dart';
 import '../../../shared/widgets/error_display.dart';
 import '../../scan/models/scan_models.dart';
 import '../../scan/providers/scan_provider.dart';
@@ -191,13 +193,37 @@ class _SuggestionCardState extends State<_SuggestionCard> {
     }
   }
 
-  Future<void> _startSession() async {
-    final result = await widget.provider.startSession(
-      widget.suggestion.suggestionId,
-    );
+  bool _starting = false;
 
-    if (result != null && mounted) {
-      context.go(AppRoutes.sessionPath(result.sessionId));
+  /// Create session -> activate -> navigate to live (D8.10 seamless transition).
+  Future<void> _startSession() async {
+    if (_starting) return;
+    setState(() => _starting = true);
+
+    try {
+      // 1. Create session from suggestion
+      final result = await widget.provider.startSession(
+        widget.suggestion.suggestionId,
+      );
+      if (result == null || !mounted) return;
+
+      // 2. Activate session
+      final api = context.read<ApiClient>();
+      final sessionApi = SessionApiService(api: api);
+      await sessionApi.activate(result.sessionId);
+
+      // 3. Navigate to live session
+      if (mounted) {
+        context.go(AppRoutes.sessionPath(result.sessionId));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not start session: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _starting = false);
     }
   }
 
@@ -315,9 +341,18 @@ class _SuggestionCardState extends State<_SuggestionCard> {
                 const Spacer(),
                 FilledButton.icon(
                   onPressed:
-                      widget.provider.isLoading ? null : _startSession,
-                  icon: const Icon(Icons.play_arrow, size: 18),
-                  label: const Text('Start Cooking'),
+                      (widget.provider.isLoading || _starting) ? null : _startSession,
+                  icon: _starting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.play_arrow, size: 18),
+                  label: Text(_starting ? 'Starting...' : 'Start Cooking'),
                 ),
               ],
             ),
