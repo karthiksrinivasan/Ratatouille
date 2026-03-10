@@ -1,6 +1,7 @@
 """Tests for health endpoint and startup warmup (Epic 7, Task 7.11)."""
 import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
+from httpx import AsyncClient, ASGITransport
 
 
 @pytest.fixture
@@ -83,6 +84,26 @@ def test_startup_warmup_runs_without_error():
             asyncio.get_event_loop().run_until_complete(warmup())
 
         mock_generate.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_health_gcs_uses_async():
+    """GCS health check must not block the event loop."""
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    mock_bucket.blob.return_value = mock_blob
+    mock_blob.exists.return_value = True
+
+    with patch("firebase_admin.initialize_app"):
+        from app.main import app
+        with patch("app.main.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+            mock_to_thread.return_value = True
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                resp = await client.get("/health")
+                assert resp.status_code == 200
+                mock_to_thread.assert_called_once()
 
 
 def test_cors_headers(client):

@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -60,7 +61,7 @@ async def health():
 
     try:
         from app.services.storage import bucket
-        bucket.blob("_health/check.txt").exists()
+        await asyncio.to_thread(bucket.blob("_health/check.txt").exists)
         checks["gcs"] = "ok"
     except Exception:
         checks["gcs"] = "error"
@@ -71,8 +72,6 @@ async def health():
 
 @app.on_event("startup")
 async def warmup():
-    import asyncio
-
     async def _warmup_gemini():
         try:
             from app.services.gemini import gemini_client, MODEL_FLASH
