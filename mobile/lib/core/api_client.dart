@@ -28,6 +28,23 @@ class ApiException implements Exception {
   bool get isServerError => statusCode >= 500;
 }
 
+/// A lightweight cancel token for aborting in-flight API requests.
+class CancelToken {
+  bool _cancelled = false;
+  bool get isCancelled => _cancelled;
+  void cancel() => _cancelled = true;
+
+  void throwIfCancelled() {
+    if (_cancelled) throw CancelledException();
+  }
+}
+
+/// Thrown when a request is cancelled via [CancelToken].
+class CancelledException implements Exception {
+  @override
+  String toString() => 'Request was cancelled';
+}
+
 /// Signature for a function that provides an auth token.
 typedef TokenProvider = Future<String?> Function();
 
@@ -73,13 +90,16 @@ class ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, String>? queryParams,
+    CancelToken? cancelToken,
   }) async {
+    cancelToken?.throwIfCancelled();
     final uri = _buildUri(path, queryParams);
     final headers = await _authHeaders();
     final response = await _withTimeout(
       _httpClient.get(uri, headers: headers),
       timeout: _timeoutFor(path),
     );
+    cancelToken?.throwIfCancelled();
     return _handleResponse(response);
   }
 
@@ -101,7 +121,9 @@ class ApiClient {
   Future<Map<String, dynamic>> post(
     String path, {
     Map<String, dynamic>? body,
+    CancelToken? cancelToken,
   }) async {
+    cancelToken?.throwIfCancelled();
     final uri = _buildUri(path);
     final headers = await _authHeaders();
     headers[HttpHeaders.contentTypeHeader] = 'application/json';
@@ -113,6 +135,7 @@ class ApiClient {
       ),
       timeout: _timeoutFor(path),
     );
+    cancelToken?.throwIfCancelled();
     return _handleResponse(response);
   }
 
@@ -120,7 +143,9 @@ class ApiClient {
   Future<Map<String, dynamic>> put(
     String path, {
     Map<String, dynamic>? body,
+    CancelToken? cancelToken,
   }) async {
+    cancelToken?.throwIfCancelled();
     final uri = _buildUri(path);
     final headers = await _authHeaders();
     headers[HttpHeaders.contentTypeHeader] = 'application/json';
@@ -132,17 +157,23 @@ class ApiClient {
       ),
       timeout: _timeoutFor(path),
     );
+    cancelToken?.throwIfCancelled();
     return _handleResponse(response);
   }
 
   /// Send a DELETE request.
-  Future<Map<String, dynamic>> delete(String path) async {
+  Future<Map<String, dynamic>> delete(
+    String path, {
+    CancelToken? cancelToken,
+  }) async {
+    cancelToken?.throwIfCancelled();
     final uri = _buildUri(path);
     final headers = await _authHeaders();
     final response = await _withTimeout(
       _httpClient.delete(uri, headers: headers),
       timeout: _timeoutFor(path),
     );
+    cancelToken?.throwIfCancelled();
     return _handleResponse(response);
   }
 
