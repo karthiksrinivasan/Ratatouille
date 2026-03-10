@@ -32,6 +32,18 @@ dependencies:
   cached_network_image: ^3.3.0
   image_picker: ^1.0.0
 
+  # Audio
+  record: ^5.0.0
+  just_audio: ^0.9.36
+  # Camera
+  camera: ^0.10.5+5
+  # Permissions
+  permission_handler: ^11.1.0
+  # Connectivity
+  connectivity_plus: ^5.0.2
+  # Notifications
+  flutter_local_notifications: ^16.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
