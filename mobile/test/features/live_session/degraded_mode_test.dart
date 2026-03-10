@@ -57,6 +57,11 @@ class FakeWsClient extends ChangeNotifier implements WsClient {
   @override
   void sendSessionResume() => send({'type': 'session_resume'});
 
+  @override
+  bool get maxRetriesReached => false;
+  @override
+  void resetReconnect() {}
+
   void simulateMessage(Map<String, dynamic> msg) => _fakeController.add(msg);
 
   @override
@@ -120,6 +125,11 @@ class DegradedFakeWsClient extends ChangeNotifier implements WsClient {
   void sendPing() => send({'type': 'ping'});
   @override
   void sendSessionResume() => send({'type': 'session_resume'});
+
+  @override
+  bool get maxRetriesReached => true;
+  @override
+  void resetReconnect() {}
 
   @override
   void dispose() {
