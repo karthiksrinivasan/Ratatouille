@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/router.dart';
 import '../../../shared/widgets/error_display.dart';
 import '../models/scan_models.dart';
 import '../providers/scan_provider.dart';
@@ -43,7 +44,7 @@ class _IngredientReviewScreenState extends State<IngredientReviewScreen> {
         // Navigate to suggestions when done
         if (provider.phase == ScanPhase.done && provider.suggestions != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            context.go('/scan/suggestions');
+            context.go(AppRoutes.scanSuggestions);
           });
         }
 
@@ -54,7 +55,7 @@ class _IngredientReviewScreenState extends State<IngredientReviewScreen> {
               icon: const Icon(Icons.arrow_back),
               onPressed: () {
                 provider.reset();
-                context.go('/scan');
+                context.go(AppRoutes.scan);
               },
             ),
           ),

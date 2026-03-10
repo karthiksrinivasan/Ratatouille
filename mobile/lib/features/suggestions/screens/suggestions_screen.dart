@@ -27,7 +27,7 @@ class SuggestionsScreen extends StatelessWidget {
             title: const Text('Recipe Suggestions'),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.go('/scan/review'),
+              onPressed: () => context.go(AppRoutes.scanReview),
             ),
           ),
           body: suggestions == null
@@ -41,7 +41,7 @@ class SuggestionsScreen extends StatelessWidget {
   Widget _buildEmptyState(ThemeData theme, BuildContext context) {
     return ErrorDisplay(
       message: 'No suggestions available. Go back and scan your ingredients.',
-      onRetry: () => context.go('/scan'),
+      onRetry: () => context.go(AppRoutes.scan),
       retryLabel: 'Start New Scan',
     );
   }
@@ -104,7 +104,7 @@ class SuggestionsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                   OutlinedButton.icon(
-                    onPressed: () => context.go('/scan'),
+                    onPressed: () => context.go(AppRoutes.scan),
                     icon: const Icon(Icons.refresh),
                     label: const Text('Scan Again'),
                   ),

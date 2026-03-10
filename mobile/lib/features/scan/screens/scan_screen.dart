@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/router.dart';
 import '../../../shared/widgets/error_display.dart';
 import '../providers/scan_provider.dart';
 
@@ -49,7 +50,7 @@ class _ScanScreenState extends State<ScanScreen> {
         // If we're past review phase, navigate to ingredient review
         if (provider.phase == ScanPhase.reviewing) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            context.go('/scan/review');
+            context.go(AppRoutes.scanReview);
           });
         }
 
@@ -58,7 +59,7 @@ class _ScanScreenState extends State<ScanScreen> {
             title: const Text('Scan Your Kitchen'),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.go('/recipes'),
+              onPressed: () => context.go(AppRoutes.recipes),
             ),
           ),
           body: provider.isLoading
@@ -145,7 +146,7 @@ class _ScanScreenState extends State<ScanScreen> {
             onPressed: () {
               // Go to review with empty detected list for manual entry
               provider.reset();
-              context.go('/scan/review');
+              context.go(AppRoutes.scanReview);
             },
             icon: const Icon(Icons.edit_note),
             label: const Text('Enter ingredients manually'),
