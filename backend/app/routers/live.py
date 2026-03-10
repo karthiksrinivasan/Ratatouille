@@ -202,9 +202,15 @@ async def live_session(websocket: WebSocket, session_id: str):
 
             elif event_type == "step_complete":
                 response = await orchestrator.advance_step()
-                await websocket.send_json(response)
-
                 current_step = orchestrator.state.get("current_step", 1)
+
+                # D4.23: Persist to Firestore BEFORE sending WS updates (atomicity)
+                await persist_session_state(session_id, {
+                    "current_step": current_step,
+                    "calibration_state": orchestrator.calibration.to_dict(),
+                })
+
+                await websocket.send_json(response)
 
                 # Auto-delegate stable processes when moving to new step
                 auto_delegate_stable_processes(processes, current_step)
@@ -264,12 +270,6 @@ async def live_session(websocket: WebSocket, session_id: str):
                                     })
                             except Exception as guide_err:
                                 logger.warning(f"Guide image generation failed: {guide_err}")
-
-                # Persist step change and calibration state
-                await persist_session_state(session_id, {
-                    "current_step": current_step,
-                    "calibration_state": orchestrator.calibration.to_dict(),
-                })
 
             elif event_type == "process_complete":
                 # Client explicitly marks a process as done
