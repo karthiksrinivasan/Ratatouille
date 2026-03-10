@@ -17,9 +17,11 @@ class TestProductEvents:
             "scan_started", "scan_completed", "scan_confirmed",
             "suggestions_viewed", "suggestion_selected",
             "session_started", "session_completed", "session_abandoned",
-            "vision_check", "guide_image_requested", "guide_image_feedback",
-            "taste_check", "error_recovery", "user_override",
+            "vision_check_requested", "visual_guide_requested", "guide_image_feedback",
+            "barge_in_triggered",
+            "taste_check_requested", "recovery_requested", "user_override",
             "memory_confirmed", "memory_rejected",
+            "timer_started", "timer_completed",
         ]
         for event in expected:
             assert event in PRODUCT_EVENTS
