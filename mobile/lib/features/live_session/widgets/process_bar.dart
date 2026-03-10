@@ -253,7 +253,10 @@ class _ProcessChipState extends State<_ProcessChip>
     final (bgColor, fgColor, icon) = _stateStyle(context);
     final priorityColor = _priorityColor(context, widget.process.priority);
 
-    Widget chip = Material(
+    Widget chip = Semantics(
+      label: '${widget.process.name}, ${widget.process.state}, priority ${widget.process.priority}',
+      button: true,
+      child: Material(
       color: bgColor,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
@@ -278,7 +281,7 @@ class _ProcessChipState extends State<_ProcessChip>
                   style: TextStyle(
                     color: fgColor,
                     fontWeight: FontWeight.w600,
-                    fontSize: 12,
+                    fontSize: 14,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -291,6 +294,7 @@ class _ProcessChipState extends State<_ProcessChip>
           ),
         ),
       ),
+    ),
     );
 
     // Wrap in pulse animation for P0 or <60s countdown
